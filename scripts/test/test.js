@@ -15,6 +15,22 @@ function longer() {
   return new Promise(resolve => {setTimeout(() => {resolve()}, 500)})
 }
 
+function sendTransaction(instance, method, args, from, value, gas, gasPrice, transactionShouldSucceed) {
+  return instance.methods[method](...args).send({
+    from: from,
+    value: value,
+    gas: gas,
+    gasPrice: gasPrice
+  }).on('confirmation', (confirmationNumber, r) => {
+    confirmations[r.transactionHash] = confirmationNumber
+  }).catch(error => {
+    if (transactionShouldSucceed) {
+      console.error(error)
+    }
+    return {status: false}
+  });
+}
+
 module.exports = {test: async function (provider, testingContext) {
   var web3 = provider
   let passed = 0
@@ -81,39 +97,24 @@ module.exports = {test: async function (provider, testingContext) {
     value,
     gas,
     gasPrice,
-    shouldSucceed,
+    transactionShouldSucceed,
     assertionCallback
   ) {
-    const receipt = await instance.methods[method](...args).send({
-      from: from,
-      value: value,
-      gas: gas,
-      gasPrice: gasPrice
-    }).on('confirmation', (confirmationNumber, r) => {
-      confirmations[r.transactionHash] = confirmationNumber
-    }).catch(error => {
-      if (shouldSucceed) {
-        console.error(error)
+      const receipt = await sendTransaction(instance, method, args, from, value, gas, gasPrice, transactionShouldSucceed);
+
+      const transactionSucceeded = receipt.status;
+
+      if (transactionSucceeded) {
+        try {
+          assertionCallback(receipt);
+        } catch (error) {
+          console.log(error);
+          return false; // return false if assertions fail and throw an error
+        }
       }
-      return {status: false}
-    })
 
-    if (receipt.status !== shouldSucceed) {
-      return false
-    } else if (!shouldSucceed) {
-      return true
-    }
-
-    let assertionsPassed
-    try {
-      assertionCallback(receipt)
-      assertionsPassed = true
-    } catch(error) {
-      assertionsPassed = false
-      console.log(error)
-    }
-
-    return assertionsPassed
+      //return true if transaction success matches expectations, false if expectations are mismatched
+      return transactionSucceeded === transactionShouldSucceed;
   }
 
   async function call(
