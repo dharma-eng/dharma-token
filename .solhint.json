@@ -1,0 +1,9 @@
+{
+  "extends": "solhint:default",
+  "rules": {
+    "indent": "off",
+    "no-inline-assembly": "off",
+    "avoid-low-level-calls": "off",
+    "function-max-lines": 70
+  }
+}
