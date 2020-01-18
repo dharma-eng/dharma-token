@@ -1,5 +1,6 @@
 var assert = require('assert');
 const constants = require('./constants.js');
+var util = require('ethereumjs-util')
 
 // artifacts: compiled contracts
 // abi + contract
@@ -86,6 +87,110 @@ class Tester {
 
         return pubKey.address
     }
+    async raiseGasLimit(necessaryGas) {
+        let iterations = 9999;
+
+        if (necessaryGas > 8000000) {
+            console.error('the gas needed is too high!');
+            process.exit(1)
+        } else if (typeof necessaryGas === 'undefined') {
+            iterations = 20
+            necessaryGas = 8000000
+        }
+
+        // bring up gas limit if necessary by doing additional transactions
+        let block = await this.web3.eth.getBlock("latest");
+        while (iterations > 0 && block.gasLimit < necessaryGas) {
+            await this.web3.eth.sendTransaction({
+                from: originalAddress,
+                to: originalAddress,
+                value: '0x01',
+                gas: '0x5208',
+                gasPrice: '0x4A817C800'
+            })
+            block = await web3.eth.getBlock("latest");
+            iterations--
+        }
+
+        console.log("raising gasLimit, currently at " + block.gasLimit);
+        return block.gasLimit
+    }
+
+    async getDeployGas(dataPayload) {
+        await this.web3.eth.estimateGas({
+            from: address,
+            data: dataPayload
+        }).catch(async error => {
+            if (
+                error.message === (
+                    'Returned error: gas required exceeds allowance or always failing ' +
+                    'transaction'
+                )
+            ) {
+                await this.raiseGasLimit();
+                await this.getDeployGas(dataPayload);
+            }
+        })
+
+        return this.web3.eth.estimateGas({
+            from: address,
+            data: dataPayload
+        });
+    }
+
+    async advanceTime(time) {
+        await this.web3.currentProvider.send(
+            {
+                jsonrpc: '2.0',
+                method: 'evm_increaseTime',
+                params: [time],
+                id: new Date().getTime()
+            },
+            (err, result) => {
+                if (err) {
+                    console.error(err)
+                } else {
+                    console.log(' ✓ advanced time by', time, 'seconds')
+                }
+            }
+        )
+    }
+
+    signHashedPrefixedHexString(hashedHexString, account) {
+        const sig = util.ecsign(
+            util.toBuffer(this.web3.utils.keccak256(
+                // prefix => "\x19Ethereum Signed Message:\n32"
+                "0x19457468657265756d205369676e6564204d6573736167653a0a3332" +
+                hashedHexString.slice(2),
+                {encoding: "hex"}
+            )),
+            util.toBuffer(this.web3.eth.accounts.wallet[account].privateKey)
+        );
+
+        return (
+            util.bufferToHex(sig.r) +
+            util.bufferToHex(sig.s).slice(2) +
+            this.web3.utils.toHex(sig.v).slice(2)
+        )
+    }
+
+    signHashedPrefixedHashedHexString(hexString, account) {
+        const sig = util.ecsign(
+            util.toBuffer(this.web3.utils.keccak256(
+                // prefix => "\x19Ethereum Signed Message:\n32"
+                "0x19457468657265756d205369676e6564204d6573736167653a0a3332" +
+                this.web3.utils.keccak256(hexString, {encoding: "hex"}).slice(2),
+                {encoding: "hex"}
+            )),
+            util.toBuffer(this.web3.eth.accounts.wallet[account].privateKey)
+        );
+
+        return (
+            util.bufferToHex(sig.r) +
+            util.bufferToHex(sig.s).slice(2) +
+            web3.utils.toHex(sig.v).slice(2)
+        )
+    };
 
     async sendTransaction(
         instance,
@@ -120,7 +225,8 @@ class Tester {
         value,
         gas,
         gasPrice,
-        callShouldSucceed) {
+        callShouldSucceed
+    ) {
         let callSucceeded = true;
 
         const returnValues = await instance.methods[method](...args).call({

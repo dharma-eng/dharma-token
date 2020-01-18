@@ -1,16 +1,12 @@
-var assert = require('assert');
-
+const assert = require('assert');
 const { Tester, longer } = require('./test');
-
 const connectionConfig = require('../../truffle-config.js');
-
 const connection = connectionConfig.networks['development'];
-
-let web3 = connection.provider;
-
+const web3 = connection.provider;
 const constants = require('./constants.js');
 
 let contractNames = constants.CONTRACT_NAMES;
+
 
 async function runAllTests() {
 
