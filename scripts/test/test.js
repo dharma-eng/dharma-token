@@ -163,8 +163,6 @@ class Tester {
 
         const transactionSucceeded = receipt.status;
 
-        let assertionsPassed;
-
         if (transactionSucceeded) {
             try {
                 assertionCallback(receipt);
@@ -204,8 +202,6 @@ class Tester {
         return callSucceeded === callShouldSucceed;
     }
 
-    // immediately redeem -- requires we deploy a test contract to enable this.
-    // for example in the constructor run the mint -> redeem, if the deployment fails then the test failed
     async deploy(
         title,
         instance,
