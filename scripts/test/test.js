@@ -87,6 +87,57 @@ class Tester {
         return pubKey.address
     }
 
+    async sendTransaction(
+        instance,
+        method,
+        args,
+        from,
+        value,
+        gas,
+        gasPrice,
+        transactionShouldSucceed
+    ) {
+        return instance.methods[method](...args).send({
+            from: from,
+            value: value,
+            gas: gas,
+            gasPrice: gasPrice
+        }).on('confirmation', (confirmationNumber, r) => {
+            confirmations[r.transactionHash] = confirmationNumber
+        }).catch(error => {
+            if (transactionShouldSucceed) {
+                console.error(error)
+            }
+            return {status: false}
+        });
+    }
+
+    async callMethod(
+        instance,
+        method,
+        args,
+        from,
+        value,
+        gas,
+        gasPrice,
+        callShouldSucceed) {
+        let callSucceeded = true;
+
+        const returnValues = await instance.methods[method](...args).call({
+            from: from,
+            value: value,
+            gas: gas,
+            gasPrice: gasPrice
+        }).catch(error => {
+            if (callShouldSucceed) {
+                console.error(error)
+            }
+            callSucceeded = false
+        });
+
+        return {callSucceeded, returnValues};
+    }
+
     async send(
         title,
         instance,
@@ -96,39 +147,35 @@ class Tester {
         value,
         gas,
         gasPrice,
-        shouldSucceed,
+        transactionShouldSucceed,
         assertionCallback
     ) {
-        const receipt = await instance.methods[method](...args).send({
-            from: from,
-            value: value,
-            gas: gas,
-            gasPrice: gasPrice
-        }).on('confirmation', (confirmationNumber, r) => {
-            confirmations[r.transactionHash] = confirmationNumber
-        }).catch(error => {
-            if (shouldSucceed) {
-                console.error(error)
-            }
-            return {status: false}
-        });
+        const receipt = await this.sendTransaction(
+            instance,
+            method,
+            args,
+            from,
+            value,
+            gas,
+            gasPrice,
+            transactionShouldSucceed
+        );
 
-        if (receipt.status !== shouldSucceed) {
-            return false;
-        } else if (!shouldSucceed) {
-            return true;
-        }
+        const transactionSucceeded = receipt.status;
 
         let assertionsPassed;
-        try {
-            assertionCallback(receipt);
-            assertionsPassed = true;
-        } catch(error) {
-            assertionsPassed = false;
-            console.log(error);
+
+        if (transactionSucceeded) {
+            try {
+                assertionCallback(receipt);
+            } catch (error) {
+                console.log(error);
+                return false; // return false if assertions fail and throw an error
+            }
         }
 
-        return assertionsPassed;
+        //return true if transaction success matches expectations, false if expectations are mismatched
+        return transactionSucceeded === transactionShouldSucceed;
     }
 
     async call(
@@ -140,42 +187,21 @@ class Tester {
         value,
         gas,
         gasPrice,
-        shouldSucceed,
+        callShouldSucceed,
         assertionCallback
     ) {
-        let succeeded = true;
-        let returnValues;
+        const {callSucceeded, returnValues} = await this.callMethod(instance, method, args, from, value, gas, gasPrice, callShouldSucceed);
 
-        try {
-            returnValues = await instance.methods[method](...args).call({
-                from: from,
-                value: value,
-                gas: gas,
-                gasPrice: gasPrice
-            });
-        } catch (error) {
-            if (shouldSucceed) {
-                console.error(error);
+        // if call succeeds, try assertion callback
+        if (callSucceeded) {
+            try {
+                assertionCallback(returnValues);
+            } catch (error) {
+                console.log(error);
+                return false;
             }
-            succeeded = false;
         }
-
-        if (succeeded !== shouldSucceed) {
-            return false;
-        } else if (!shouldSucceed) {
-            return true;
-        }
-
-        let assertionsPassed;
-        try {
-            assertionCallback(returnValues);
-            assertionsPassed = true;
-        } catch(error) {
-            assertionsPassed = false;
-            console.log(error);
-        }
-
-        return assertionsPassed;
+        return callSucceeded === callShouldSucceed;
     }
 
     // immediately redeem -- requires we deploy a test contract to enable this.
