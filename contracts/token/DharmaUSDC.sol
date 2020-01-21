@@ -4,6 +4,7 @@ import "@openzeppelin/contracts/math/SafeMath.sol";
 import "../../interfaces/CTokenInterface.sol";
 import "../../interfaces/DTokenInterface.sol";
 import "../../interfaces/ERC20Interface.sol";
+import "../../interfaces/InterestRateModelInterface.sol";
 
 
 /**
@@ -66,19 +67,22 @@ contract DharmaUSDC is ERC20Interface, DTokenInterface {
    */
   function mint(
     uint256 usdcToSupply
-  ) external accrues returns (uint256 dUSDCMinted) {
+  ) external returns (uint256 dUSDCMinted) {
     // Pull in USDC - ensure that this contract has sufficient allowance.
     require(
       _USDC.transferFrom(msg.sender, address(this), usdcToSupply),
       "USDC transfer failed."
     );
 
-    // Use the cUSDC to mint USDC and ensure that the operation succeeds.
+    // Use the USDC to mint cUSDC and ensure that the operation succeeds.
     (bool ok, bytes memory data) = address(_CUSDC).call(abi.encodeWithSelector(
       _CUSDC.mint.selector, usdcToSupply
     ));
 
     _checkCompoundInteraction(_CUSDC.mint.selector, ok, data);
+
+    // Accrue after the Compound mint to avoid duplicating calculations.
+    _accrue();
 
     // Determine the dUSDC to mint using the exchange rate.
     dUSDCMinted = (usdcToSupply.mul(_SCALING_FACTOR)).div(_dUSDCExchangeRate);
@@ -177,20 +181,24 @@ contract DharmaUSDC is ERC20Interface, DTokenInterface {
    */
   function redeemUnderlying(
     uint256 usdcToReceive
-  ) external accrues returns (uint256 dUSDCBurned) {
-    // Determine the dUSDC to redeem using the exchange rate.
-    // TODO: round up!
-    dUSDCBurned = (usdcToReceive.mul(_SCALING_FACTOR)).div(_dUSDCExchangeRate);
-
-    // Burn the dUSDC.
-    _burn(msg.sender, usdcToReceive, dUSDCBurned);
-
+  ) external returns (uint256 dUSDCBurned) {
     // Use the cUSDC to redeem USDC and ensure that the operation succeeds.
     (bool ok, bytes memory data) = address(_CUSDC).call(abi.encodeWithSelector(
       _CUSDC.redeemUnderlying.selector, usdcToReceive
     ));
 
     _checkCompoundInteraction(_CUSDC.redeemUnderlying.selector, ok, data);
+
+    // Accrue after the Compound redeem to avoid duplicating calculations.
+    _accrue();
+
+    // Determine the dUSDC to redeem using the exchange rate.
+    dUSDCBurned = (
+      (usdcToReceive.mul(_SCALING_FACTOR)).div(_dUSDCExchangeRate)
+    ).add(1);
+
+    // Burn the dUSDC.
+    _burn(msg.sender, usdcToReceive, dUSDCBurned);
 
     // Send the USDC to the redeemer.
     require(_USDC.transfer(msg.sender, usdcToReceive), "USDC transfer failed.");
@@ -500,6 +508,23 @@ contract DharmaUSDC is ERC20Interface, DTokenInterface {
   }
 
   /**
+   * @notice Internal function to trigger accrual and to update the dUSDC and
+   * cUSDC exchange rates in storage if necessary.
+   */
+  function _accrue() internal {
+    (
+      uint256 dUSDCExchangeRate, uint256 cUSDCExchangeRate, bool fullyAccrued
+    ) = _getAccruedInterest();
+
+    if (!fullyAccrued) {
+      // Update storage with dUSDC + cUSDC exchange rates as of the current block
+      _dUSDCExchangeRate = dUSDCExchangeRate;
+      _cUSDCExchangeRate = cUSDCExchangeRate;
+      emit Accrue(dUSDCExchangeRate, cUSDCExchangeRate);
+    }
+  }
+
+  /**
    * @notice Internal function to mint `amount` tokens by exchanging `exchanged`
    * tokens to `account` and emit corresponding `Mint` & `Transfer` events.
    * @param account address The account to mint tokens to.
@@ -575,35 +600,78 @@ contract DharmaUSDC is ERC20Interface, DTokenInterface {
   function _getAccruedInterest() internal view returns (
     uint256 dUSDCExchangeRate, uint256 cUSDCExchangeRate, bool fullyAccrued
   ) {
-    // Get the stored cUSDC exhange rate.
+    // Get the stored dUSDC and cUSDC exhange rate.
+    uint256 storedDUSDCExchangeRate = _dUSDCExchangeRate;
     uint256 storedCUSDCExchangeRate = _cUSDCExchangeRate;
 
     // Get the current cUSDC exchange rate.
-    cUSDCExchangeRate = _getCurrentExchangeRate();
+    (cUSDCExchangeRate,) = _getCurrentCUSDCRates();
 
+    // Only recompute dUSDC exchange rate if cUSDC exchange rate has changed.
     fullyAccrued = (cUSDCExchangeRate == storedCUSDCExchangeRate);
+    if (fullyAccrued) {
+      dUSDCExchangeRate = storedDUSDCExchangeRate;
+    } else {
+      // Determine the cUSDC interest earned during the period.
+      uint256 cUSDCInterest = (
+        (cUSDCExchangeRate.mul(_SCALING_FACTOR)).div(storedCUSDCExchangeRate)
+      ).sub(_SCALING_FACTOR);
 
-    // Apply 90% rate to cUSDC interest earned to determine dUSDC exchange rate.
-    dUSDCExchangeRate = fullyAccrued ? _dUSDCExchangeRate : _dUSDCExchangeRate.mul(
-      _TEN_PERCENT.add(
-        (cUSDCExchangeRate.mul(_NINETY_PERCENT)).div(storedCUSDCExchangeRate)
-      )
-    ) / _SCALING_FACTOR;
+      // Calculate dUSDC exchange rate by applying 90% of the cUSDC interest.
+      dUSDCExchangeRate = storedDUSDCExchangeRate.mul(
+        _SCALING_FACTOR.add(cUSDCInterest.mul(9) / 10)
+      ) / _SCALING_FACTOR;
+    }
   }
 
   /**
-   * @notice Internal view function to get the current cUSDC exchange rate.
-   * @return The current cUSDC exchange rate, or amount of USDC that is redeemable
-   * for each cUSDC (with 18 decimal places added to the returned exchange rate).
+   * @notice Internal view function to get the current cUSDC exchange rate and
+   * supply rate per block.
+   * @return The current cUSDC exchange rate, or amount of USDC that is
+   * redeemable for each cUSDC, and the cUSDC supply rate per block (with 18
+   * decimal places added to each returned rate).
    */
-  function _getCurrentExchangeRate() internal view returns (uint256 exchangeRate) {
-    uint256 storedExchangeRate = _CUSDC.exchangeRateStored();
+  function _getCurrentCUSDCRates() internal view returns (
+    uint256 exchangeRate, uint256 supplyRate
+  ) {
+    // Determine number of blocks that have elapsed since last cUSDC accrual.
     uint256 blockDelta = block.number.sub(_CUSDC.accrualBlockNumber());
 
-    exchangeRate = blockDelta == 0 ? storedExchangeRate : storedExchangeRate.add(
-      storedExchangeRate.mul(
-        _CUSDC.supplyRatePerBlock().mul(blockDelta)
-      ) / _SCALING_FACTOR
+    // Return stored values if accrual has already been performed this block.
+    if (blockDelta == 0) return (
+      _CUSDC.exchangeRateStored(), _CUSDC.supplyRatePerBlock()
+    );
+    
+    // Determine total "cash" held by cUSDC contract.
+    uint256 cash = _USDC.balanceOf(address(_CUSDC));
+
+    // Get the latest interest rate model from the cUSDC contract.
+    InterestRateModelInterface interestRateModel = InterestRateModelInterface(
+      _CUSDC.interestRateModel()
+    );
+
+    // Get the current stored total borrows, reserves, and reserve factor.
+    uint256 borrows = _CUSDC.totalBorrows();
+    uint256 reserves = _CUSDC.totalReserves();
+    uint256 reserveFactor = _CUSDC.reserveFactorMantissa();
+
+    // Get accumulated borrow interest via interest rate model and block delta.
+    uint256 interest = interestRateModel.getBorrowRate(
+      cash, borrows, reserves
+    ).mul(blockDelta).mul(borrows) / _SCALING_FACTOR;
+
+    // Update total borrows and reserves using calculated accumulated interest.
+    borrows = borrows.add(interest);
+    reserves = reserves.add(reserveFactor.mul(interest) / _SCALING_FACTOR);
+
+    // Determine cUSDC exchange rate: (cash + borrows - reserves) / total supply
+    exchangeRate = (
+      ((cash.add(borrows)).sub(reserves)).mul(_SCALING_FACTOR)
+    ).div(_CUSDC.totalSupply());
+
+    // Get supply rate via interest rate model and calculated parameters.
+    supplyRate = interestRateModel.getSupplyRate(
+      cash, borrows, reserves, reserveFactor
     );
   }
 
@@ -646,7 +714,7 @@ contract DharmaUSDC is ERC20Interface, DTokenInterface {
   function _getRatePerBlock() internal view returns (
     uint256 dUSDCSupplyRate, uint256 cUSDCSupplyRate
   ) {
-    cUSDCSupplyRate = _CUSDC.supplyRatePerBlock();
+    (, cUSDCSupplyRate) = _getCurrentCUSDCRates();
     dUSDCSupplyRate = cUSDCSupplyRate.mul(9) / 10;
   }
 
@@ -770,16 +838,7 @@ contract DharmaUSDC is ERC20Interface, DTokenInterface {
    * of the rest of the decorated function.
    */
   modifier accrues() {
-    (
-      uint256 dUSDCExchangeRate, uint256 cUSDCExchangeRate, bool fullyAccrued
-    ) = _getAccruedInterest();
-
-    if (!fullyAccrued) {
-      // Update storage with dUSDC + cUSDC exchange rates as of the current block
-      _dUSDCExchangeRate = dUSDCExchangeRate;
-      _cUSDCExchangeRate = cUSDCExchangeRate;
-      emit Accrue(dUSDCExchangeRate, cUSDCExchangeRate);
-    }
+    _accrue();
 
     _;
   }

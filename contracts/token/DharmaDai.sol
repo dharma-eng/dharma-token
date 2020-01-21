@@ -80,7 +80,7 @@ contract DharmaDai is ERC20Interface, DTokenInterface {
       "Dai transfer failed."
     );
 
-    // Use the cDai to mint Dai and ensure that the operation succeeds.
+    // Use the Dai to mint cDai and ensure that the operation succeeds.
     (bool ok, bytes memory data) = address(_CDAI).call(abi.encodeWithSelector(
       _CDAI.mint.selector, daiToSupply
     ));
@@ -195,7 +195,7 @@ contract DharmaDai is ERC20Interface, DTokenInterface {
 
     _checkCompoundInteraction(_CDAI.redeemUnderlying.selector, ok, data);
 
-    // Accrue after the Compound mint to avoid duplicating calculations.
+    // Accrue after the Compound redeem to avoid duplicating calculations.
     _accrue();
 
     // Determine the dDai to redeem using the exchange rate.
