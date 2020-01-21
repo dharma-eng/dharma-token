@@ -11,8 +11,10 @@ const { runAllTests } = require("./testScenarios");
 
 // run tests
 async function runTests() {
-	await deployMockExternal.test(web3Provider, 'development');
-    await runAllTests();
+    const context = 'development';
+
+	await deployMockExternal.test(web3Provider, context);
+    await runAllTests(context);
 	process.exit(0)
 }
 
