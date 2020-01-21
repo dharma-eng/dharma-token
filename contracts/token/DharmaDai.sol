@@ -4,6 +4,8 @@ import "@openzeppelin/contracts/math/SafeMath.sol";
 import "../../interfaces/CTokenInterface.sol";
 import "../../interfaces/DTokenInterface.sol";
 import "../../interfaces/ERC20Interface.sol";
+import "../../interfaces/InterestRateModelInterface.sol";
+import "../../interfaces/PotInterface.sol";
 
 
 /**
@@ -24,8 +26,9 @@ contract DharmaDai is ERC20Interface, DTokenInterface {
   uint8 internal constant _DECIMALS = 8; // to match cDai
 
   uint256 internal constant _SCALING_FACTOR = 1e18;
+  uint256 internal constant _HALF_OF_SCALING_FACTOR = 5e17;
+  uint256 internal constant _RAY = 1e27;
   uint256 internal constant _NINETY_PERCENT = 9e17;
-  uint256 internal constant _TEN_PERCENT = 1e17;
   uint256 internal constant _COMPOUND_SUCCESS = 0;
 
   CTokenInterface internal constant _CDAI = CTokenInterface(
@@ -34,6 +37,10 @@ contract DharmaDai is ERC20Interface, DTokenInterface {
 
   ERC20Interface internal constant _DAI = ERC20Interface(
     0x6B175474E89094C44Da98b954EedeAC495271d0F // mainnet
+  );
+
+  PotInterface internal constant _POT = PotInterface(
+    0x197E90f9FAD81970bA7976f33CbD77088E5D7cf7 // mainnet
   );
 
   // Note: this is just an EOA for the initial prototype.
@@ -575,35 +582,80 @@ contract DharmaDai is ERC20Interface, DTokenInterface {
   function _getAccruedInterest() internal view returns (
     uint256 dDaiExchangeRate, uint256 cDaiExchangeRate, bool fullyAccrued
   ) {
-    // Get the stored cDai exhange rate.
+    // Get the stored dDai and cDai exchange rates.
+    uint256 storedDDaiExchangeRate = _dDaiExchangeRate;
     uint256 storedCDaiExchangeRate = _cDaiExchangeRate;
 
     // Get the current cDai exchange rate.
-    cDaiExchangeRate = _getCurrentExchangeRate();
+    (cDaiExchangeRate,) = _getCurrentCDaiRates();
 
     fullyAccrued = (cDaiExchangeRate == storedCDaiExchangeRate);
 
-    // Apply 90% rate to cDai interest earned to determine dDai exchange rate.
-    dDaiExchangeRate = fullyAccrued ? _dDaiExchangeRate : _dDaiExchangeRate.mul(
-      _TEN_PERCENT.add(
-        (cDaiExchangeRate.mul(_NINETY_PERCENT)).div(storedCDaiExchangeRate)
-      )
-    ) / _SCALING_FACTOR;
+    if (fullyAccrued) {
+      dDaiExchangeRate = storedDDaiExchangeRate;
+    } else {
+      uint256 cDaiInterest = (
+        (cDaiExchangeRate.mul(_SCALING_FACTOR)).div(storedCDaiExchangeRate)
+      ).sub(_SCALING_FACTOR);
+
+      uint256 dDaiInterest = cDaiInterest.mul(9) / 10;
+
+      dDaiExchangeRate = storedDDaiExchangeRate.mul(
+        _SCALING_FACTOR.add(dDaiInterest)
+      ) / _SCALING_FACTOR;
+    }
   }
 
   /**
-   * @notice Internal view function to get the current cDai exchange rate.
+   * @notice Internal view function to get the current cDai exchange rate and
+   * supply rate per block.
    * @return The current cDai exchange rate, or amount of Dai that is redeemable
-   * for each cDai (with 18 decimal places added to the returned exchange rate).
+   * for each cDai, and the cDai supply rate per block (with 18 decimal places
+   * added to each returned rate).
    */
-  function _getCurrentExchangeRate() internal view returns (uint256 exchangeRate) {
-    uint256 storedExchangeRate = _CDAI.exchangeRateStored();
+  function _getCurrentCDaiRates() internal view returns (
+    uint256 exchangeRate, uint256 supplyRate
+  ) {
+    // Determine the number of blocks that have elapsed since last cDai accrual.
     uint256 blockDelta = block.number.sub(_CDAI.accrualBlockNumber());
 
-    exchangeRate = blockDelta == 0 ? storedExchangeRate : storedExchangeRate.add(
-      storedExchangeRate.mul(
-        _CDAI.supplyRatePerBlock().mul(blockDelta)
-      ) / _SCALING_FACTOR
+    // Return stored values if accrual has already been performed this block.
+    if (blockDelta == 0) return (
+      _CDAI.exchangeRateStored(), _CDAI.supplyRatePerBlock()
+    );
+    
+    // Determine total "cash" held by cDai contract by calculating DSR interest.
+    uint256 cash = (
+      rpow(_POT.dsr(), now.sub(_POT.rho()), _RAY).mul(_POT.chi()) / _RAY // chi
+    ).mul(_POT.pie(address(_CDAI))) / _RAY;
+
+    // Get the latest interest rate model from the cDai contract.
+    InterestRateModelInterface interestRateModel = InterestRateModelInterface(
+      _CDAI.interestRateModel()
+    );
+
+    // Get the current stored total borrows, reserves, and reserve factor.
+    uint256 borrows = _CDAI.totalBorrows();
+    uint256 reserves = _CDAI.totalReserves();
+    uint256 reserveFactor = _CDAI.reserveFactorMantissa();
+
+    // Get accumulated borrow interest via interest rate model and block delta.
+    uint256 interest = interestRateModel.getBorrowRate(
+      cash, borrows, reserves
+    ).mul(blockDelta).mul(borrows) / _SCALING_FACTOR;
+
+    // Update total borrows and reserves using calculated accumulated interest.
+    borrows = borrows.add(interest);
+    reserves = reserves.add(reserveFactor.mul(interest) / _SCALING_FACTOR);
+
+    // Determine cDai exchange rate: (cash + borrows - reserves) / total supply
+    exchangeRate = (
+      ((cash.add(borrows)).sub(reserves)).mul(_SCALING_FACTOR)
+    ).div(_CDAI.totalSupply());
+
+    // Get supply rate via interest rate model and calculated parameters.
+    supplyRate = interestRateModel.getSupplyRate(
+      cash, borrows, reserves, reserveFactor
     );
   }
 
@@ -646,7 +698,7 @@ contract DharmaDai is ERC20Interface, DTokenInterface {
   function _getRatePerBlock() internal view returns (
     uint256 dDaiSupplyRate, uint256 cDaiSupplyRate
   ) {
-    cDaiSupplyRate = _CDAI.supplyRatePerBlock();
+    (, cDaiSupplyRate) = _getCurrentCDaiRates();
     dDaiSupplyRate = cDaiSupplyRate.mul(9) / 10;
   }
 
@@ -761,6 +813,34 @@ contract DharmaDai is ERC20Interface, DTokenInterface {
       // Simply return the default, with no revert reason.
       revertReason = "(no revert reason)";
     }
+  }
+
+  function rpow(uint256 x, uint256 n, uint256 base) internal pure returns (uint256 z) {
+    assembly {
+      switch x case 0 {switch n case 0 {z := base} default {z := 0}}
+      default {
+        switch mod(n, 2) case 0 { z := base } default { z := x }
+        let half := div(base, 2)  // for rounding.
+        for { n := div(n, 2) } n { n := div(n, 2) } {
+          let xx := mul(x, x)
+          if iszero(eq(div(xx, x), x)) { revert(0, 0) }
+          let xxRound := add(xx, half)
+          if lt(xxRound, xx) { revert(0,0) }
+          x := div(xxRound, base)
+          if mod(n,2) {
+            let zx := mul(z, x)
+            if and(iszero(iszero(x)), iszero(eq(div(zx, x), z))) { revert(0, 0) }
+            let zxRound := add(zx, half)
+            if lt(zxRound, zx) { revert(0, 0) }
+            z := div(zxRound, base)
+          }
+        }
+      }
+    }
+  }
+
+  function rmul(uint256 x, uint256 y) internal pure returns (uint256 z) {
+    z = x.mul(y) / _RAY;
   }
 
   /**

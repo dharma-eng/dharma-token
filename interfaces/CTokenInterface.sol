@@ -22,7 +22,21 @@ interface CTokenInterface {
 
   function approve(address spender, uint256 amount) external returns (bool);
 
+  function accrueInterest() external returns (uint256 err);
+
   function allowance(address owner, address spender) external view returns (uint256);
+
+  function getCash() external view returns (uint256);
+
+  function totalSupply() external view returns (uint256 supply);
+
+  function totalBorrows() external view returns (uint256 borrows);
+
+  function totalReserves() external view returns (uint256 reserves);
+
+  function interestRateModel() external view returns (address model);
+
+  function reserveFactorMantissa() external view returns (uint256 factor);
     
   function supplyRatePerBlock() external view returns (uint256 rate);
 
