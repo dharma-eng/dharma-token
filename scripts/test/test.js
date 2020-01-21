@@ -15,40 +15,6 @@ function longer() {
   return new Promise(resolve => {setTimeout(() => {resolve()}, 500)})
 }
 
-function sendTransaction(instance, method, args, from, value, gas, gasPrice, transactionShouldSucceed) {
-  return instance.methods[method](...args).send({
-    from: from,
-    value: value,
-    gas: gas,
-    gasPrice: gasPrice
-  }).on('confirmation', (confirmationNumber, r) => {
-    confirmations[r.transactionHash] = confirmationNumber
-  }).catch(error => {
-    if (transactionShouldSucceed) {
-      console.error(error)
-    }
-    return {status: false}
-  });
-}
-
-async function callMethod(instance, method, args, from, value, gas, gasPrice, callShouldSucceed) {
-  let callSucceeded = true;
-
-  const returnValues = await instance.methods[method](...args).call({
-    from: from,
-    value: value,
-    gas: gas,
-    gasPrice: gasPrice
-  }).catch(error => {
-    if (callShouldSucceed) {
-      console.error(error)
-    }
-    callSucceeded = false
-  });
-
-  return {callSucceeded, returnValues};
-}
-
 module.exports = {test: async function (provider, testingContext) {
   var web3 = provider
   let passed = 0
@@ -115,24 +81,39 @@ module.exports = {test: async function (provider, testingContext) {
     value,
     gas,
     gasPrice,
-    transactionShouldSucceed,
+    shouldSucceed,
     assertionCallback
   ) {
-      const receipt = await sendTransaction(instance, method, args, from, value, gas, gasPrice, transactionShouldSucceed);
-
-      const transactionSucceeded = receipt.status;
-
-      if (transactionSucceeded) {
-        try {
-          assertionCallback(receipt);
-        } catch (error) {
-          console.log(error);
-          return false; // return false if assertions fail and throw an error
-        }
+    const receipt = await instance.methods[method](...args).send({
+      from: from,
+      value: value,
+      gas: gas,
+      gasPrice: gasPrice
+    }).on('confirmation', (confirmationNumber, r) => {
+      confirmations[r.transactionHash] = confirmationNumber
+    }).catch(error => {
+      if (shouldSucceed) {
+        console.error(error)
       }
+      return {status: false}
+    })
 
-      //return true if transaction success matches expectations, false if expectations are mismatched
-      return transactionSucceeded === transactionShouldSucceed;
+    if (receipt.status !== shouldSucceed) {
+      return false
+    } else if (!shouldSucceed) {
+      return true
+    }
+
+    let assertionsPassed
+    try {
+      assertionCallback(receipt)
+      assertionsPassed = true
+    } catch(error) {
+      assertionsPassed = false
+      console.log(error)
+    }
+
+    return assertionsPassed
   }
 
   async function call(
@@ -144,22 +125,38 @@ module.exports = {test: async function (provider, testingContext) {
     value,
     gas,
     gasPrice,
-    callShouldSucceed,
+    shouldSucceed,
     assertionCallback
   ) {
-    const {callSucceeded, returnValues} = await callMethod(instance, method, args, from, value, gas, gasPrice, callShouldSucceed);
-
-    //if call succeeds, try assertion callback
-    if (callSucceeded) {
-      try {
-        assertionCallback(returnValues);
-      } catch (error) {
-        console.log(error);
-        return false;
+    let succeeded = true
+    returnValues = await instance.methods[method](...args).call({
+      from: from,
+      value: value,
+      gas: gas,
+      gasPrice: gasPrice
+    }).catch(error => {
+      if (shouldSucceed) {
+        console.error(error)
       }
+      succeeded = false
+    })
+
+    if (succeeded !== shouldSucceed) {
+      return false
+    } else if (!shouldSucceed) {
+      return true
     }
 
-    return callSucceeded === callShouldSucceed;
+    let assertionsPassed
+    try {
+      assertionCallback(returnValues)
+      assertionsPassed = true
+    } catch(error) {
+      assertionsPassed = false
+      console.log(error)
+    }
+
+    return assertionsPassed
   }
 
   async function deploy(
