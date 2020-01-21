@@ -511,19 +511,38 @@ class Tester {
         }
     }
 
-    getEvents(receipt, contractNames) {
-        return Object.values(receipt.events).map((value) => {
-            const log = constants.EVENT_DETAILS[value.raw.topics[0]];
-            return {
-                address: contractNames[value.address],
-                eventName: log.name,
-                returnValues: this.web3.eth.abi.decodeLog(
-                    log.abi, value.raw.data, value.raw.topics
-                )
-            }
-        })
+  getEvents(receipt, contractNames) {
+    return Object.values(receipt.events).map(value => {
+    // Handle coverage events
+    if (typeof value.raw === 'undefined') return null
+
+    // Handle MKR events independently (Pot and Vat called by cDai)
+    if (value.raw.topics.length === 4) {
+      return {
+        address: contractNames[value.address],
+        eventName: null,
+        returnValues: {
+          selector: value.raw.topics[0].slice(10),
+          caller: this.web3.utils.toChecksumAddress(
+            '0x' + value.raw.topics[1].slice(26)
+          ),
+          arg1: value.raw.topics[2],
+          arg2: value.raw.topics[3]
+        }
+      }
     }
-}
+
+    const log = constants.EVENT_DETAILS[value.raw.topics[0]]
+    if (this.testingContext === 'coverage' && typeof log === 'undefined') return null
+    return {
+      address: contractNames[value.address],
+      eventName: log.name,
+      returnValues: this.web3.eth.abi.decodeLog(
+        log.abi, value.raw.data, value.raw.topics
+      )
+    }
+  }).filter(value => value !== null)
+}}
 
 module.exports = {
   Tester,

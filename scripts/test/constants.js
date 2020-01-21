@@ -428,7 +428,9 @@ module.exports = Object.freeze({
     '0x4Ddc2D193948926D02f9B1fE9e1daa0718270ED5': 'CETH',
     '0x3d9819210A31b4961b30EF54bE2aeD79B9c9Cd3B': 'Comptroller',
     '0x00000000001876eB1444c986fD502e618c587430': 'DDAI',
-    '0x0000000000946A7848C50C8f0AE1BB2792602Cb7': 'DUSDC' 
+    '0x0000000000946A7848C50C8f0AE1BB2792602Cb7': 'DUSDC',
+    '0x197E90f9FAD81970bA7976f33CbD77088E5D7cf7': 'POT',
+    '0x35D1b3F3D7966A1DFe207aa4514C12a259A0492B': 'VAT'
   },
   EVENT_DETAILS: {
     // keccak256 of NewUserSigningKey(address) -> userSigningKey
@@ -554,6 +556,27 @@ module.exports = Object.freeze({
     '0x875352fb3fadeb8c0be7cbbe8ff761b308fa7033470cd0287f02f3436fd76cb9': {
       name: 'AccrueInterest',
       abi: [
+        {
+          type: 'uint256',
+          name: 'interestAccumulated'
+        }, {
+          type: 'uint256',
+          name: 'borrowIndex'
+        }, {
+          type: 'uint256',
+          name: 'totalBorrows'
+        }
+      ]    
+    },
+    // AccrueInterest(uint256,uint256,uint256,uint256) ->
+    //   cashPrior, interestAccumulated, borrowIndex, totalBorrows (cDai)
+    '0x4dec04e750ca11537cabcd8a9eab06494de08da3735bc8871cd41250e190bc04': {
+      name: 'AccrueInterest',
+      abi: [
+        {
+          type: 'uint256',
+          name: 'cashPrior'
+        },
         {
           type: 'uint256',
           name: 'interestAccumulated'

@@ -13,172 +13,220 @@ async function runAllTests() {
     const tester = new Tester(web3, 'development');
     await tester.init();
 
-    const DharmaDai = await tester.runTest(
-        `DharmaDai contract deployment`,
-        tester.DharmaDaiDeployer,
-        '',
-        'deploy'
-    );
+  let deployGas
+  let selfAddress
 
-    contractNames = Object.assign(contractNames, {
-        [DharmaDai.options.address]: 'DDAI'
-    });
+  let cDaiSupplyRate
+  let cDaiExchangeRate
+  const DharmaDai = await tester.runTest(
+    `DharmaDai contract deployment`,
+    tester.DharmaDaiDeployer,
+    '',
+    'deploy'
+  )
 
-    await tester.runTest(
-        'Dharma Dai gets the initial version correctly',
-        DharmaDai,
-        'getVersion',
-        'call',
-        [],
-        true,
-        value => {
-            assert.strictEqual(value, '0')
-        }
-    );
+  contractNames = Object.assign(contractNames, {
+    [DharmaDai.options.address]: 'DDAI'
+  })
 
-    let cDaiSupplyRate;
-    await tester.runTest(
-        'cDai supply rate can be retrieved',
-        tester.CDAI,
-        'supplyRatePerBlock',
-        'call',
-        [],
-        true,
-        value => {
-            cDaiSupplyRate = web3.utils.toBN(value)
-        }
-    );
+  await tester.runTest(
+    'Dharma Dai gets the initial version correctly',
+    DharmaDai,
+    'getVersion',
+    'call',
+    [],
+    true,
+    value => {
+      assert.strictEqual(value, '0')
+    }
+  )
 
-    let cDaiExchangeRate;
-    await tester.runTest(
-        'cDai exchange rate can be retrieved',
-        tester.CDAI,
-        'exchangeRateCurrent',
-        'call',
-        [],
-        true,
-        value => {
-            cDaiExchangeRate = web3.utils.toBN(value)
-        }
-    );
+  let dDaiExchangeRate = web3.utils.toBN('10000000000000000000000000000')
+  await tester.runTest(
+    'Dharma Dai exchange rate starts at 1e28',
+    DharmaDai,
+    'exchangeRateCurrent',
+    'call',
+    [],
+    true,
+    value => {
+      assert.strictEqual(value, dDaiExchangeRate.toString())
+    }
+  )
 
-    let dDaiSupplyRate = (cDaiSupplyRate.mul(tester.NINE)).div(tester.TEN);
-    await tester.runTest(
-        'Dharma Dai supply rate starts at 90% of cDai supply rate',
-        DharmaDai,
-        'supplyRatePerBlock',
-        'call',
-        [],
-        true,
-        value => {
-            assert.strictEqual(value, dDaiSupplyRate.toString())
-        }
-    );
+  await tester.runTest(
+    'Accrue cDai interest',
+    tester.CDAI,
+    'accrueInterest',
+    'send',
+    [],
+    true,
+    receipt => {
+      const events = tester.getEvents(receipt, contractNames)
+   
+      // 'suck' on Vat, 'drip' on Pot, 'accrueInterest' on cDai
+      assert.strictEqual(events.length, 3)
 
-    let dDaiExchangeRate = web3.utils.toBN('10000000000000000000000000000');
-    await tester.runTest(
-        'Dharma Dai exchange rate starts at 1e28',
-        DharmaDai,
-        'exchangeRateCurrent',
-        'call',
-        [],
-        true,
-        value => {
-            assert.strictEqual(value, dDaiExchangeRate.toString())
-        }
-    );
+      assert.strictEqual(events[0].address, 'VAT')
+      assert.strictEqual(events[1].address, 'POT')
+      assert.strictEqual(events[2].address, 'CDAI')
+    }
+  )
 
-    // Every time we call send, block increments by 1
-    const latestBlock = await web3.eth.getBlock('latest');
-    const blockNumber = latestBlock.number;
+  await tester.runTest(
+    'cDai supply rate can be retrieved',
+    tester.CDAI,
+    'supplyRatePerBlock',
+    'call',
+    [],
+    true,
+    value => {
+      cDaiSupplyRate = web3.utils.toBN(value)
+    }
+  )
 
-    const expectedDDaiExchangeRate = dDaiExchangeRate.add(
-        (dDaiExchangeRate.mul(dDaiSupplyRate)).div(tester.SCALING_FACTOR)
-    );
+  let dDaiSupplyRate = (cDaiSupplyRate.mul(tester.NINE)).div(tester.TEN)
+  await tester.runTest(
+    'Dharma Dai supply rate starts at 90% of cDai supply rate',
+    DharmaDai,
+    'supplyRatePerBlock',
+    'call',
+    [],
+    true,
+    value => {
+      assert.strictEqual(value, dDaiSupplyRate.toString())
+    }
+  )
 
-    const expectedCDaiExchangeRate = cDaiExchangeRate.add(
-        (cDaiExchangeRate.mul(cDaiSupplyRate)).div(tester.SCALING_FACTOR)
-    );
+  await tester.runTest(
+    'cDai exchange rate can be retrieved',
+    tester.CDAI,
+    'exchangeRateCurrent',
+    'call',
+    [],
+    true,
+    value => {
+      cDaiExchangeRate = web3.utils.toBN(value)
+    }
+  )
 
-    await tester.runTest(
-        'Dharma Dai accrueInterest can be triggered correctly from any account',
-        DharmaDai,
-        'accrueInterest',
-        'send',
-        [],
-        true,
-        receipt => {
-            assert.strictEqual(receipt.blockNumber, blockNumber + 1);
-            if (tester.context !== 'coverage') {
-                const events = tester.getEvents(receipt, contractNames);
+  await tester.runTest(
+    'Dharma Dai exchange rate can be retrieved',
+    DharmaDai,
+    'exchangeRateCurrent',
+    'call',
+    [],
+    true,
+    value => {
+      dDaiExchangeRate = web3.utils.toBN(value)
+    }
+  )
 
-                assert.strictEqual(events.length, 1);
+  let blockNumber = (await web3.eth.getBlock('latest')).number
+  let newDDaiExchangeRate;
+  let newCDaiExchangeRate;
 
-                assert.strictEqual(events[0].address, 'DDAI');
-                assert.strictEqual(events[0].eventName, 'Accrue');
-                assert.strictEqual(
-                    events[0].returnValues.dTokenExchangeRate,
-                    expectedDDaiExchangeRate.toString()
-                );
-                assert.strictEqual(
-                    events[0].returnValues.cTokenExchangeRate,
-                    expectedCDaiExchangeRate.toString()
-                )
-            }
-        },
-        tester.originalAddress
-    );
+  await tester.runTest(
+    'Dharma Dai accrueInterest can be triggered correctly from any account',
+    DharmaDai,
+    'accrueInterest',
+    'send',
+    [],
+    true,
+    receipt => {
+      assert.strictEqual(receipt.blockNumber, blockNumber + 1)
+      const events = tester.getEvents(receipt, contractNames)
+   
+      assert.strictEqual(events.length, 1)
 
-    dDaiExchangeRate = expectedDDaiExchangeRate;
-    cDaiExchangeRate = expectedCDaiExchangeRate;
+      assert.strictEqual(events[0].address, 'DDAI')
+      assert.strictEqual(events[0].eventName, 'Accrue')
+      newDDaiExchangeRate = web3.utils.toBN(
+        events[0].returnValues.dTokenExchangeRate
+      )
+      newCDaiExchangeRate = web3.utils.toBN(
+        events[0].returnValues.cTokenExchangeRate
+      )
 
-    await tester.runTest(
-        'Dharma Dai exchange rate is updated correctly',
-        DharmaDai,
-        'exchangeRateCurrent',
-        'call',
-        [],
-        true,
-        value => {
-            assert.strictEqual(value, dDaiExchangeRate.toString())
-        }
-    );
+      cDaiInterest = ((
+        newCDaiExchangeRate.mul(tester.SCALING_FACTOR)
+      ).div(cDaiExchangeRate)).sub(tester.SCALING_FACTOR)
 
-    await tester.runTest(
-        'Dharma Dai supply rate is unchanged after an accrual',
-        DharmaDai,
-        'supplyRatePerBlock',
-        'call',
-        [],
-        true,
-        value => {
-            assert.strictEqual(value, dDaiSupplyRate.toString())
-        }
-    );
+      dDaiInterest = (cDaiInterest.mul(tester.NINE)).div(tester.TEN)
 
-    await tester.runTest(
-        'cDai exchange rate is updated correctly',
-        tester.CDAI,
-        'exchangeRateCurrent',
-        'call',
-        [],
-        true,
-        value => {
-            assert.strictEqual(value, cDaiExchangeRate.toString())
-        }
-    );
+      calculatedDDaiExchangeRate = (dDaiExchangeRate.mul(
+        tester.SCALING_FACTOR.add(dDaiInterest)
+      )).div(tester.SCALING_FACTOR)
 
-    await tester.runTest(
-        'cDai supply rate is unchanged after an accrual',
-        tester.CDAI,
-        'supplyRatePerBlock',
-        'call',
-        [],
-        true,
-        value => {
-            assert.strictEqual(value, cDaiSupplyRate.toString())
-        }
-    );
+      assert.strictEqual(
+        events[0].returnValues.dTokenExchangeRate,
+        calculatedDDaiExchangeRate.toString()
+      )
+    },
+    tester.originalAddress
+  )
+
+  dDaiExchangeRate = newDDaiExchangeRate
+  cDaiExchangeRate = newCDaiExchangeRate
+
+  await tester.runTest(
+    'Dharma Dai exchange rate is updated correctly',
+    DharmaDai,
+    'exchangeRateCurrent',
+    'call',
+    [],
+    true,
+    value => {
+      assert.strictEqual(value, dDaiExchangeRate.toString())
+    }
+  )
+
+  await tester.runTest(
+    'Dharma Dai supply rate is updated after an accrual',
+    DharmaDai,
+    'supplyRatePerBlock',
+    'call',
+    [],
+    true,
+    value => {
+      dDaiSupplyRate = value
+    }
+  )
+
+  await tester.runTest(
+    'cDai exchange rate is updated correctly',
+    tester.CDAI,
+    'exchangeRateCurrent',
+    'call',
+    [],
+    true,
+    value => {
+      assert.strictEqual(value, cDaiExchangeRate.toString())
+    }
+  )
+
+  await tester.runTest(
+    'cDai static supply rate is unchanged after a dDai accrual',
+    tester.CDAI,
+    'supplyRatePerBlock',
+    'call',
+    [],
+    true,
+    value => {
+      assert.strictEqual(value, cDaiSupplyRate.toString())
+    }
+  )
+
+  const DharmaUSDC = await tester.runTest(
+    `DharmaUSDC contract deployment`,
+    tester.DharmaUSDCDeployer,
+    '',
+    'deploy'
+  )
+
+  contractNames = Object.assign(contractNames, {
+    [DharmaUSDC.options.address]: 'DUSDC'
+  })
 
     console.log(
         `completed ${tester.passed + tester.failed} test${tester.passed + tester.failed === 1 ? '' : 's'} ` +
