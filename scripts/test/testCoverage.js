@@ -3,12 +3,15 @@ web3Provider = new Web3('ws://localhost:8555')
 
 // import tests
 var deployMockExternal = require('./deployMockExternal.js')
-var test = require('./test.js')
+
+const { runAllTests } = require("./testScenarios");
 
 // run tests
 async function runTests() {
-  await deployMockExternal.test(web3Provider, 'coverage')
-  await test.test(web3Provider, 'coverage')
+  const context = 'coverage';
+
+  await deployMockExternal.test(web3Provider, context)
+  await runAllTests(context);
   process.exit(0)
 }
 

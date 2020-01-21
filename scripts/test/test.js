@@ -108,7 +108,7 @@ class Tester {
                 gas: '0x5208',
                 gasPrice: '0x4A817C800'
             })
-            block = await web3.eth.getBlock("latest");
+            block = await this.web3.eth.getBlock("latest");
             iterations--
         }
 
@@ -434,7 +434,7 @@ class Tester {
         if (typeof(gas) === 'undefined' && callOrSendOrDeploy !== 'deploy') {
             gas = 6009006;
             if (this.context === 'coverage') {
-                gas = gasLimit - 1
+                gas = this.gasLimit - 1
             }
         }
         let ok = false
