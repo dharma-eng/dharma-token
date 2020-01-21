@@ -73,7 +73,7 @@ contract DharmaDai is ERC20Interface, DTokenInterface {
    */
   function mint(
     uint256 daiToSupply
-  ) external accrues returns (uint256 dDaiMinted) {
+  ) external returns (uint256 dDaiMinted) {
     // Pull in Dai - ensure that this contract has sufficient allowance.
     require(
       _DAI.transferFrom(msg.sender, address(this), daiToSupply),
@@ -86,6 +86,9 @@ contract DharmaDai is ERC20Interface, DTokenInterface {
     ));
 
     _checkCompoundInteraction(_CDAI.mint.selector, ok, data);
+
+    // Accrue after the Compound mint to avoid duplicating calculations.
+    _accrue();
 
     // Determine the dDai to mint using the exchange rate.
     dDaiMinted = (daiToSupply.mul(_SCALING_FACTOR)).div(_dDaiExchangeRate);
@@ -184,20 +187,24 @@ contract DharmaDai is ERC20Interface, DTokenInterface {
    */
   function redeemUnderlying(
     uint256 daiToReceive
-  ) external accrues returns (uint256 dDaiBurned) {
-    // Determine the dDai to redeem using the exchange rate.
-    // TODO: round up!
-    dDaiBurned = (daiToReceive.mul(_SCALING_FACTOR)).div(_dDaiExchangeRate);
-
-    // Burn the dDai.
-    _burn(msg.sender, daiToReceive, dDaiBurned);
-
+  ) external returns (uint256 dDaiBurned) {
     // Use the cDai to redeem Dai and ensure that the operation succeeds.
     (bool ok, bytes memory data) = address(_CDAI).call(abi.encodeWithSelector(
       _CDAI.redeemUnderlying.selector, daiToReceive
     ));
 
     _checkCompoundInteraction(_CDAI.redeemUnderlying.selector, ok, data);
+
+    // Accrue after the Compound mint to avoid duplicating calculations.
+    _accrue();
+
+    // Determine the dDai to redeem using the exchange rate.
+    dDaiBurned = (
+      (daiToReceive.mul(_SCALING_FACTOR)).div(_dDaiExchangeRate)
+    ).add(1);
+
+    // Burn the dDai.
+    _burn(msg.sender, daiToReceive, dDaiBurned);
 
     // Send the Dai to the redeemer.
     require(_DAI.transfer(msg.sender, daiToReceive), "Dai transfer failed.");
@@ -214,8 +221,9 @@ contract DharmaDai is ERC20Interface, DTokenInterface {
     uint256 daiToReceive
   ) external accrues returns (uint256 dDaiBurned) {
     // Determine the dDai to redeem using the exchange rate.
-    // TODO: round up
-    dDaiBurned = (daiToReceive.mul(_SCALING_FACTOR)).div(_dDaiExchangeRate);
+    dDaiBurned = (
+      (daiToReceive.mul(_SCALING_FACTOR)).div(_dDaiExchangeRate)
+    ).add(1);
 
     // Burn the dDai.
     _burn(msg.sender, daiToReceive, dDaiBurned);
@@ -416,7 +424,7 @@ contract DharmaDai is ERC20Interface, DTokenInterface {
    */
   function getSpreadPerBlock() external view returns (uint256 rateSpread) {
     (uint256 dDaiInterestRate, uint256 cDaiInterestRate) = _getRatePerBlock();
-    rateSpread = cDaiInterestRate - dDaiInterestRate;
+    rateSpread = cDaiInterestRate.sub(dDaiInterestRate);
   }
 
   /**
@@ -470,7 +478,9 @@ contract DharmaDai is ERC20Interface, DTokenInterface {
    * @param spender address The account that has been granted the allowance.
    * @return The allowance of the given spender for the given owner.
    */
-  function allowance(address owner, address spender) external view returns (uint256) {
+  function allowance(
+    address owner, address spender
+  ) external view returns (uint256) {
     return _allowances[owner][spender];
   }
 
@@ -504,6 +514,23 @@ contract DharmaDai is ERC20Interface, DTokenInterface {
    */
   function getVersion() external pure returns (uint256 version) {
     version = _DHARMA_DAI_VERSION;
+  }
+
+  /**
+   * @notice Internal function to trigger accrual and to update the dDai and
+   * cDai exchange rates in storage if necessary.
+   */
+  function _accrue() internal {
+    (
+      uint256 dDaiExchangeRate, uint256 cDaiExchangeRate, bool fullyAccrued
+    ) = _getAccruedInterest();
+
+    if (!fullyAccrued) {
+      // Update storage with dDai + cDai exchange rates as of the current block
+      _dDaiExchangeRate = dDaiExchangeRate;
+      _cDaiExchangeRate = cDaiExchangeRate;
+      emit Accrue(dDaiExchangeRate, cDaiExchangeRate);
+    }
   }
 
   /**
@@ -589,19 +616,19 @@ contract DharmaDai is ERC20Interface, DTokenInterface {
     // Get the current cDai exchange rate.
     (cDaiExchangeRate,) = _getCurrentCDaiRates();
 
+    // Only recompute dDai exchange rate if the cDai exchange rate has changed.
     fullyAccrued = (cDaiExchangeRate == storedCDaiExchangeRate);
-
     if (fullyAccrued) {
       dDaiExchangeRate = storedDDaiExchangeRate;
     } else {
+      // Determine the cDai interest earned during the period.
       uint256 cDaiInterest = (
         (cDaiExchangeRate.mul(_SCALING_FACTOR)).div(storedCDaiExchangeRate)
       ).sub(_SCALING_FACTOR);
 
-      uint256 dDaiInterest = cDaiInterest.mul(9) / 10;
-
+      // Calculate the dDai exchange rate by applying 90% of the cDai interest.
       dDaiExchangeRate = storedDDaiExchangeRate.mul(
-        _SCALING_FACTOR.add(dDaiInterest)
+        _SCALING_FACTOR.add(cDaiInterest.mul(9) / 10)
       ) / _SCALING_FACTOR;
     }
   }
@@ -815,6 +842,14 @@ contract DharmaDai is ERC20Interface, DTokenInterface {
     }
   }
 
+  /**
+   * @notice Internal pure function to emulate exponentiation performed by the
+   * Dai Savings Rate contract.
+   * @param x uint256 The number that will be raised to the given power.
+   * @param n uint256 The power to raise that number by.
+   * @param base uint256 The scaling factor that will be applied to n and z.
+   * @return The number raised to the given power.
+   */
   function rpow(uint256 x, uint256 n, uint256 base) internal pure returns (uint256 z) {
     assembly {
       switch x case 0 {switch n case 0 {z := base} default {z := 0}}
@@ -839,10 +874,6 @@ contract DharmaDai is ERC20Interface, DTokenInterface {
     }
   }
 
-  function rmul(uint256 x, uint256 y) internal pure returns (uint256 z) {
-    z = x.mul(y) / _RAY;
-  }
-
   /**
    * @notice Modifier to determine the latest dDai and cDai exchange rates, and
    * to update the respective storage values if they have not already been
@@ -850,16 +881,7 @@ contract DharmaDai is ERC20Interface, DTokenInterface {
    * of the rest of the decorated function.
    */
   modifier accrues() {
-    (
-      uint256 dDaiExchangeRate, uint256 cDaiExchangeRate, bool fullyAccrued
-    ) = _getAccruedInterest();
-
-    if (!fullyAccrued) {
-      // Update storage with dDai + cDai exchange rates as of the current block
-      _dDaiExchangeRate = dDaiExchangeRate;
-      _cDaiExchangeRate = cDaiExchangeRate;
-      emit Accrue(dDaiExchangeRate, cDaiExchangeRate);
-    }
+    _accrue();
 
     _;
   }
