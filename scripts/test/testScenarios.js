@@ -134,13 +134,14 @@ async function runAllTests(web3, context) {
 
             assert.strictEqual(events.length, 1)
 
-            assert.strictEqual(events[0].address, 'DDAI')
-            assert.strictEqual(events[0].eventName, 'Accrue')
+            const accrueEvent = events[0];
+            assert.strictEqual(accrueEvent.address, 'DDAI')
+            assert.strictEqual(accrueEvent.eventName, 'Accrue')
             newDDaiExchangeRate = web3.utils.toBN(
-                events[0].returnValues.dTokenExchangeRate
+                accrueEvent.returnValues.dTokenExchangeRate
             )
             newCDaiExchangeRate = web3.utils.toBN(
-                events[0].returnValues.cTokenExchangeRate
+                accrueEvent.returnValues.cTokenExchangeRate
             )
 
             cDaiInterest = ((
@@ -154,7 +155,7 @@ async function runAllTests(web3, context) {
             )).div(tester.SCALING_FACTOR)
 
             assert.strictEqual(
-                events[0].returnValues.dTokenExchangeRate,
+                accrueEvent.returnValues.dTokenExchangeRate,
                 calculatedDDaiExchangeRate.toString()
             )
         },
