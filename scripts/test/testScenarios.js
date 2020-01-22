@@ -9,6 +9,11 @@ const tokenSymbols = {
     "Dharma USDC": "dUSDC"
 };
 
+const cTokenSymbols = {
+    "Dharma Dai": "cDai",
+    "Dharma USDC": "cUSDC"
+};
+
 const DTokenDecimals = 8;
 
 async function runAllTests(web3, context, contractName, contract) {
@@ -52,7 +57,7 @@ async function runAllTests(web3, context, contractName, contract) {
     }
 
     await tester.runTest(
-        `Accrue ${tokenSymbols[contractName]} interest`,
+        `Accrue ${cTokenSymbols[contractName]} interest`,
         CToken,
         'accrueInterest',
         'send',
@@ -72,7 +77,7 @@ async function runAllTests(web3, context, contractName, contract) {
 
     let cTokenSupplyRate;
     await tester.runTest(
-        `${tokenSymbols[contractName]} supply rate can be retrieved`,
+        `${cTokenSymbols[contractName]} supply rate can be retrieved`,
         CToken,
         'supplyRatePerBlock',
         'call',
@@ -98,7 +103,7 @@ async function runAllTests(web3, context, contractName, contract) {
 
     let cTokenExchangeRate;
     await tester.runTest(
-        `${tokenSymbols[contractName]} exchange rate can be retrieved`,
+        `${cTokenSymbols[contractName]} exchange rate can be retrieved`,
         CToken,
         'exchangeRateCurrent',
         'call',
@@ -199,7 +204,7 @@ async function runAllTests(web3, context, contractName, contract) {
     )
 
     await tester.runTest(
-        `${tokenSymbols[contractName]} exchange rate is updated correctly`,
+        `${cTokenSymbols[contractName]} exchange rate is updated correctly`,
         CToken,
         'exchangeRateCurrent',
         'call',
@@ -211,7 +216,7 @@ async function runAllTests(web3, context, contractName, contract) {
     )
 
     await tester.runTest(
-        `${tokenSymbols[contractName]} supply rate is unchanged after dDai accrual (as it did not accrue)`,
+        `${cTokenSymbols[contractName]} supply rate is unchanged after dDai accrual (as it did not accrue)`,
         CToken,
         'supplyRatePerBlock',
         'call',
