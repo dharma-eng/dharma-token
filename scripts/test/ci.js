@@ -14,7 +14,7 @@ async function runTests() {
     const context = 'development';
 
 	await deployMockExternal.test(web3Provider, context);
-    await runAllTests(context);
+    await runAllTests(web3Provider, context);
 	process.exit(0)
 }
 

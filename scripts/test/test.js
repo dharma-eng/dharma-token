@@ -512,7 +512,10 @@ class Tester {
     }
 
   getEvents(receipt, contractNames) {
-    return Object.values(receipt.events).map(value => {
+    const { events } = receipt;
+
+    return Object.values(events).map(value => {
+
     // Handle coverage events
     if (typeof value.raw === 'undefined') return null
 
@@ -532,8 +535,12 @@ class Tester {
       }
     }
 
-    const log = constants.EVENT_DETAILS[value.raw.topics[0]]
-    if (this.testingContext === 'coverage' && typeof log === 'undefined') return null
+    const topic = value.raw.topics[0];
+    const log = constants.EVENT_DETAILS[topic];
+    if (this.context === 'coverage' && typeof log === 'undefined') {
+        return null
+    }
+
     return {
       address: contractNames[value.address],
       eventName: log.name,
