@@ -33,19 +33,7 @@ async function runAllTests(web3, context, contractName, contract) {
 
     await testPureFunctions(tester, DToken, contractName, tokenSymbols[contractName]);
 
-    const dDAIExchangeRate = web3.utils.toBN('10000000000000000000000000000');
-    const dUSDCExchangeRate = web3.utils.toBN('10000000000000000');
-    const initialExchangeRates = {
-        "Dharma Dai": {
-            notation: "1e28",
-            rate: dDAIExchangeRate,
-        },
-        "Dharma USDC": {
-            notation: "1e16",
-            rate: dUSDCExchangeRate
-        }
-    };
-
+    const initialExchangeRates = getExchangeRates(web3);
 
     let dTokenExchangeRate = initialExchangeRates[contractName];
     // coverage mines a few blocks prior to reaching this point - skip this test
@@ -334,6 +322,22 @@ async function getOrDeployDTokenContract(contract, tester, contractName) {
         'deploy'
     );
 }
+
+function getExchangeRates(web3) {
+    const dDAIExchangeRate = web3.utils.toBN('10000000000000000000000000000');
+    const dUSDCExchangeRate = web3.utils.toBN('10000000000000000');
+    return {
+        "Dharma Dai": {
+            notation: "1e28",
+            rate: dDAIExchangeRate,
+        },
+        "Dharma USDC": {
+            notation: "1e16",
+            rate: dUSDCExchangeRate
+        }
+    };
+}
+
 
 async function testSnapshot(web3, tester) {
     // test takeSnapshot and revertToSnapshot
