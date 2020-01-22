@@ -40,14 +40,18 @@ contract DharmaUSDC is ERC20Interface, DTokenInterface {
   // Note: this is just an EOA for the initial prototype.
   address internal constant _VAULT = 0x7e4A8391C728fEd9069B2962699AB416628B19Fa;
 
-  mapping (address => uint256) private _balances;
+  // Slot zero tracks the last stored dUSDC exchange rate.
+  uint256 private _dUSDCExchangeRate;
 
-  mapping (address => mapping (address => uint256)) private _allowances;
+  // Slot one tracks the last stored cUSDC exchange rate.
+  uint256 private _cUSDCExchangeRate;
 
+  // Slot two tracks the total issued dUSDC tokens.
   uint256 private _totalSupply;
 
-  uint256 private _dUSDCExchangeRate;
-  uint256 private _cUSDCExchangeRate;
+  // Slots three and four are entrypoints into balance and allowance mappings.
+  mapping (address => uint256) private _balances;
+  mapping (address => mapping (address => uint256)) private _allowances;
 
   constructor() public {
     // Approve cUSDC to transfer USDC on behalf of this contract in order to mint.
