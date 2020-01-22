@@ -1,72 +1,59 @@
 const assert = require('assert');
 const { Tester, longer } = require('./test');
-const connectionConfig = require('../../truffle-config.js');
 const constants = require('./constants.js');
 
 let contractNames = constants.CONTRACT_NAMES;
 
+const tokenSymbols = {
+    "Dharma Dai": "dDai",
+    "Dharma USDC": "dUSDC"
+};
 
-async function runAllTests(web3, context, contract, contractName) {
+const DTokenDecimals = 8;
+
+async function runAllTests(web3, context, contractName, contract) {
+
     const tester = new Tester(web3, context);
     await tester.init();
 
+    // Test takeSnapshot and revertToSnapshot
     await testSnapshot(web3, tester);
 
-    let cDaiSupplyRate
-    let cDaiExchangeRate
+    const DToken = await getOrDeployDTokenContract(contract, tester, contractName);
 
-    let DharmaToken;
-    if (contract) {
-        DharmaToken = contract;
-    } else {
-        contractName = 'Dharma Dai'
-        DharmaToken = await tester.runTest(
-            `${contractName} contract deployment`,
-            contractName === 'Dharma Dai'
-                ? tester.DharmaDaiDeployer
-                : tester.DharmaUSDCDeployer,
-            '',
-            'deploy'
-        )
-    }
+    const CToken = contractName === 'Dharma Dai' ? tester.CDAI : tester.CUSDC;
+
+    const { options: { address: dTokenAddress  } } = DToken;
 
     contractNames = Object.assign(contractNames, {
-        [DharmaToken.options.address]: (
+        [dTokenAddress]: (
             contractName === 'Dharma Dai' ? 'DDAI' : 'DUSDC'
         )
-    })
+    });
 
-    await tester.runTest(
-        `${contractName} gets the initial version correctly`,
-        DharmaToken,
-        'getVersion',
-        'call',
-        [],
-        true,
-        value => {
-            assert.strictEqual(value, '0')
-        }
-    )
+    await testPureFunctions(tester, DToken, contractName, tokenSymbols[contractName]);
 
-    let dDaiExchangeRate = web3.utils.toBN('10000000000000000000000000000')
+    const initialExchangeRates = getExchangeRates(web3);
+
+    let dTokenExchangeRate = initialExchangeRates[contractName];
     // coverage mines a few blocks prior to reaching this point - skip this test
     if (context !== 'coverage') {
         await tester.runTest(
-            `${contractName} exchange rate starts at 1e28`,
-            DharmaToken,
+            `${contractName} exchange rate starts at ${dTokenExchangeRate.notation}`,
+            DToken,
             'exchangeRateCurrent',
             'call',
             [],
             true,
             value => {
-                assert.strictEqual(value, dDaiExchangeRate.toString())
+                assert.strictEqual(value, dTokenExchangeRate.rate.toString())
             }
         )
     }
 
     await tester.runTest(
-        'Accrue cDai interest',
-        tester.CDAI,
+        `Accrue ${tokenSymbols[contractName]} interest`,
+        CToken,
         'accrueInterest',
         'send',
         [],
@@ -83,22 +70,23 @@ async function runAllTests(web3, context, contract, contractName) {
         }
     )
 
+    let cTokenSupplyRate;
     await tester.runTest(
-        'cDai supply rate can be retrieved',
-        tester.CDAI,
+        `${tokenSymbols[contractName]} supply rate can be retrieved`,
+        CToken,
         'supplyRatePerBlock',
         'call',
         [],
         true,
         value => {
-            cDaiSupplyRate = web3.utils.toBN(value)
+            cTokenSupplyRate = web3.utils.toBN(value)
         }
     )
 
-    let dDaiSupplyRate = (cDaiSupplyRate.mul(tester.NINE)).div(tester.TEN)
+    let dDaiSupplyRate = (cTokenSupplyRate.mul(tester.NINE)).div(tester.TEN)
     await tester.runTest(
         `${contractName} supply rate starts at 90% of cDai supply rate`,
-        DharmaToken,
+        DToken,
         'supplyRatePerBlock',
         'call',
         [],
@@ -108,45 +96,46 @@ async function runAllTests(web3, context, contract, contractName) {
         }
     )
 
+    let cTokenExchangeRate;
     await tester.runTest(
-        'cDai exchange rate can be retrieved',
-        tester.CDAI,
+        `${tokenSymbols[contractName]} exchange rate can be retrieved`,
+        CToken,
         'exchangeRateCurrent',
         'call',
         [],
         true,
         value => {
-            cDaiExchangeRate = web3.utils.toBN(value)
+             cTokenExchangeRate = web3.utils.toBN(value)
         }
     )
 
     await tester.runTest(
         `${contractName} exchange rate can be retrieved`,
-        DharmaToken,
+        DToken,
         'exchangeRateCurrent',
         'call',
         [],
         true,
         value => {
-            dDaiExchangeRate = web3.utils.toBN(value)
+            dTokenExchangeRate = web3.utils.toBN(value)
         }
     )
 
     // dToken ExchangeRate "checkpoint" is stored at slot zero.
     let storedDTokenExchangeRate = web3.utils.toBN(
-        await web3.eth.getStorageAt(DharmaToken.options.address, 0)
+        await web3.eth.getStorageAt(DToken.options.address, 0)
     )
 
     // cToken ExchangeRate "checkpoint" is stored at slot one.
     let storedCTokenExchangeRate = web3.utils.toBN(
-        await web3.eth.getStorageAt(DharmaToken.options.address, 1)
+        await web3.eth.getStorageAt(DToken.options.address, 1)
     )
 
     let blockNumber = (await web3.eth.getBlock('latest')).number
 
     await tester.runTest(
         `${contractName} accrueInterest can be triggered correctly from any account`,
-        DharmaToken,
+        DToken,
         'accrueInterest',
         'send',
         [],
@@ -160,15 +149,15 @@ async function runAllTests(web3, context, contract, contractName) {
             const accrueEvent = events[0];
             assert.strictEqual(accrueEvent.address, 'DDAI')
             assert.strictEqual(accrueEvent.eventName, 'Accrue')
-            dDaiExchangeRate = web3.utils.toBN(
+            dTokenExchangeRate = web3.utils.toBN(
                 accrueEvent.returnValues.dTokenExchangeRate
             )
-            cDaiExchangeRate = web3.utils.toBN(
+             cTokenExchangeRate = web3.utils.toBN(
                 accrueEvent.returnValues.cTokenExchangeRate
             )
 
             cDaiInterest = ((
-                cDaiExchangeRate.mul(tester.SCALING_FACTOR)
+                 cTokenExchangeRate.mul(tester.SCALING_FACTOR)
             ).div(storedCTokenExchangeRate)).sub(tester.SCALING_FACTOR)
 
             dDaiInterest = (cDaiInterest.mul(tester.NINE)).div(tester.TEN)
@@ -178,7 +167,7 @@ async function runAllTests(web3, context, contract, contractName) {
             )).div(tester.SCALING_FACTOR)
 
             assert.strictEqual(
-                dDaiExchangeRate.toString(),
+                dTokenExchangeRate.toString(),
                 calculatedDDaiExchangeRate.toString()
             )
         },
@@ -187,19 +176,19 @@ async function runAllTests(web3, context, contract, contractName) {
 
     await tester.runTest(
         `${contractName} exchange rate is updated correctly`,
-        DharmaToken,
+        DToken,
         'exchangeRateCurrent',
         'call',
         [],
         true,
         value => {
-            assert.strictEqual(value, dDaiExchangeRate.toString())
+            assert.strictEqual(value, dTokenExchangeRate.toString())
         }
     )
 
     await tester.runTest(
         `${contractName} supply rate is updated after an accrual`,
-        DharmaToken,
+        DToken,
         'supplyRatePerBlock',
         'call',
         [],
@@ -210,39 +199,39 @@ async function runAllTests(web3, context, contract, contractName) {
     )
 
     await tester.runTest(
-        'cDai exchange rate is updated correctly',
-        tester.CDAI,
+        `${tokenSymbols[contractName]} exchange rate is updated correctly`,
+        CToken,
         'exchangeRateCurrent',
         'call',
         [],
         true,
         value => {
-            assert.strictEqual(value, cDaiExchangeRate.toString())
+            assert.strictEqual(value,  cTokenExchangeRate.toString())
         }
     )
 
     await tester.runTest(
-        'cDai supply rate is unchanged after dDai accrual (as it did not accrue)',
-        tester.CDAI,
+        `${tokenSymbols[contractName]} supply rate is unchanged after dDai accrual (as it did not accrue)`,
+        CToken,
         'supplyRatePerBlock',
         'call',
         [],
         true,
         value => {
-            assert.strictEqual(value, cDaiSupplyRate.toString())
+            assert.strictEqual(value, cTokenSupplyRate.toString())
         }
     )
 
     storedDTokenExchangeRate = web3.utils.toBN(
-        await web3.eth.getStorageAt(DharmaToken.options.address, 0)
+        await web3.eth.getStorageAt(DToken.options.address, 0)
     )
     storedCTokenExchangeRate = web3.utils.toBN(
-        await web3.eth.getStorageAt(DharmaToken.options.address, 1)
+        await web3.eth.getStorageAt(DToken.options.address, 1)
     )
 
     await tester.runTest(
         `${contractName} can pull surplus of 0 before any tokens are minted`,
-        DharmaToken,
+        DToken,
         'pullSurplus',
         'send',
         [],
@@ -259,15 +248,15 @@ async function runAllTests(web3, context, contract, contractName) {
             // Ensure that accrual is performed correctly
             assert.strictEqual(accrueEvent.address, 'DDAI');
             assert.strictEqual(accrueEvent.eventName, 'Accrue');
-            dDaiExchangeRate = web3.utils.toBN(
+            dTokenExchangeRate = web3.utils.toBN(
                 accrueEvent.returnValues.dTokenExchangeRate
             )
-            cDaiExchangeRate = web3.utils.toBN(
+             cTokenExchangeRate = web3.utils.toBN(
                 accrueEvent.returnValues.cTokenExchangeRate
             )
 
             cDaiInterest = ((
-                cDaiExchangeRate.mul(tester.SCALING_FACTOR)
+                 cTokenExchangeRate.mul(tester.SCALING_FACTOR)
             ).div(storedCTokenExchangeRate)).sub(tester.SCALING_FACTOR)
 
             dDaiInterest = (cDaiInterest.mul(tester.NINE)).div(tester.TEN)
@@ -277,7 +266,7 @@ async function runAllTests(web3, context, contract, contractName) {
             )).div(tester.SCALING_FACTOR)
 
             assert.strictEqual(
-                dDaiExchangeRate.toString(),
+                dTokenExchangeRate.toString(),
                 calculatedDDaiExchangeRate.toString()
             )
 
@@ -285,7 +274,7 @@ async function runAllTests(web3, context, contract, contractName) {
             assert.strictEqual(transferEvent.address, 'CDAI');
             assert.strictEqual(transferEvent.eventName, 'Transfer');
             assert.strictEqual(
-                transferEvent.returnValues.from, DharmaToken.options.address
+                transferEvent.returnValues.from, DToken.options.address
             )
             assert.strictEqual(
                 transferEvent.returnValues.to, constants.VAULT_MAINNET_ADDRESS
@@ -633,6 +622,36 @@ async function runAllTests(web3, context, contract, contractName) {
     return 0
 }
 
+async function getOrDeployDTokenContract(contract, tester, contractName) {
+    if (contract) {
+        return contract;
+    }
+    return await tester.runTest(
+        `${contractName} contract deployment`,
+        contractName === 'Dharma Dai'
+            ? tester.DharmaDaiDeployer
+            : tester.DharmaUSDCDeployer,
+        '',
+        'deploy'
+    );
+}
+
+function getExchangeRates(web3) {
+    const dDAIExchangeRate = web3.utils.toBN('10000000000000000000000000000');
+    const dUSDCExchangeRate = web3.utils.toBN('10000000000000000');
+    return {
+        "Dharma Dai": {
+            notation: "1e28",
+            rate: dDAIExchangeRate,
+        },
+        "Dharma USDC": {
+            notation: "1e16",
+            rate: dUSDCExchangeRate
+        }
+    };
+}
+
+
 async function testSnapshot(web3, tester) {
     // test takeSnapshot and revertToSnapshot
     const beforeSnapshotBlockNumber = (await web3.eth.getBlock('latest')).number;
@@ -654,6 +673,55 @@ async function testSnapshot(web3, tester) {
     assert.strictEqual(beforeSnapshotBlockNumber, blockNumber);
 }
 
+async function testPureFunctions(tester, DTokenContract, DTokenName, DTokenSymbol) {
+    await tester.runTest(
+        `${DTokenName} gets the initial version correctly`,
+        DTokenContract,
+        'getVersion',
+        'call',
+        [],
+        true,
+        value => {
+            assert.strictEqual(value, '0')
+        }
+    );
+
+    await tester.runTest(
+        `${DTokenName} gets name correctly`,
+        DTokenContract,
+        'name',
+        'call',
+        [],
+        true,
+        value => {
+            assert.strictEqual(value, DTokenName)
+        }
+    );
+
+    await tester.runTest(
+        `${DTokenName} gets symbol correctly`,
+        DTokenContract,
+        'symbol',
+        'call',
+        [],
+        true,
+        value => {
+            assert.strictEqual(value, DTokenSymbol)
+        }
+    );
+
+    await tester.runTest(
+        `${DTokenName} gets decimals correctly`,
+        DTokenContract,
+        'decimals',
+        'call',
+        [],
+        true,
+        value => {
+            assert.strictEqual(value, DTokenDecimals.toString())
+        }
+    );
+}
 
 module.exports ={
     runAllTests,
