@@ -22,5 +22,6 @@ module.exports = {
         evmVersion: "petersburg"
       }
     }
-  }
+  },
+  plugins: ["solidity-coverage"]
 }

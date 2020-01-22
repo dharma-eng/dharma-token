@@ -60,13 +60,9 @@ class Tester {
 
         this.originalAddress = addresses[0];
 
-        this.address = await this.setupNewDefaultAddress(
-            '0xfeedfeedfeedfeedfeedfeedfeedfeedfeedfeedfeedfeedfeedfeedfeedfeed'
-        );
+        this.address = addresses[1];
 
-        this.addressTwo = await this.setupNewDefaultAddress(
-            '0xf00df00df00df00df00df00df00df00df00df00df00df00df00df00df00df00d'
-        );
+        this.addressTwo = addresses[2];
 
         let latestBlock = await this.web3.eth.getBlock('latest');
 
