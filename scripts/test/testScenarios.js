@@ -371,7 +371,7 @@ async function runAllTests(web3, context, contractName, contract) {
 
     await tester.runTest(
         `${contractName} cannot mint dTokens without prior approval`,
-        DharmaToken,
+        DToken,
         'mint',
         'send',
         ['1000000000000000000'],
@@ -383,12 +383,12 @@ async function runAllTests(web3, context, contractName, contract) {
         tester.DAI,
         'approve',
         'send',
-        [DharmaToken.options.address, constants.FULL_APPROVAL]
+        [DToken.options.address, constants.FULL_APPROVAL]
     )
 
     await tester.runTest(
         `${contractName} can get dToken exchange rate`,
-        DharmaToken,
+        DToken,
         'exchangeRateCurrent',
         'call',
         [],
@@ -411,15 +411,15 @@ async function runAllTests(web3, context, contractName, contract) {
     )
 
     storedDTokenExchangeRate = web3.utils.toBN(
-        await web3.eth.getStorageAt(DharmaToken.options.address, 0)
+        await web3.eth.getStorageAt(DToken.options.address, 0)
     )
     storedCTokenExchangeRate = web3.utils.toBN(
-        await web3.eth.getStorageAt(DharmaToken.options.address, 1)
+        await web3.eth.getStorageAt(DToken.options.address, 1)
     )
 
     await tester.runTest(
         `${contractName} can mint dTokens`,
-        DharmaToken,
+        DToken,
         'mint',
         'send',
         ['1000000000000000000'],
@@ -450,7 +450,7 @@ async function runAllTests(web3, context, contractName, contract) {
             assert.strictEqual(events[4].address, 'DAI')
             assert.strictEqual(events[4].eventName, 'Transfer')
             assert.strictEqual(
-                events[4].returnValues.from, DharmaToken.options.address
+                events[4].returnValues.from, DToken.options.address
             )
             assert.strictEqual(
                 events[4].returnValues.value, '1000000000000000000'
@@ -485,7 +485,7 @@ async function runAllTests(web3, context, contractName, contract) {
                 daiTransferInEvent.returnValues.from, tester.address
             )
             assert.strictEqual(
-                daiTransferInEvent.returnValues.to, DharmaToken.options.address
+                daiTransferInEvent.returnValues.to, DToken.options.address
             )
             assert.strictEqual(
                 daiTransferInEvent.returnValues.value, '1000000000000000000'
@@ -495,7 +495,7 @@ async function runAllTests(web3, context, contractName, contract) {
             assert.strictEqual(cDaiMintEvent.address, 'CDAI')
             assert.strictEqual(cDaiMintEvent.eventName, 'Mint')
             assert.strictEqual(
-                cDaiMintEvent.returnValues.minter, DharmaToken.options.address
+                cDaiMintEvent.returnValues.minter, DToken.options.address
             )
             assert.strictEqual(
                 cDaiMintEvent.returnValues.mintTokens, '1000000000000000000'
@@ -509,7 +509,7 @@ async function runAllTests(web3, context, contractName, contract) {
                 cDaiTransferEvent.returnValues.from, tester.CDAI.options.address
             )
             assert.strictEqual(
-                cDaiTransferEvent.returnValues.to, DharmaToken.options.address
+                cDaiTransferEvent.returnValues.to, DToken.options.address
             )
             assert.strictEqual(
                 cDaiTransferEvent.returnValues.value,
@@ -584,7 +584,7 @@ async function runAllTests(web3, context, contractName, contract) {
 
     await tester.runTest(
         `${contractName} exchange rate is updated correctly`,
-        DharmaToken,
+        DToken,
         'exchangeRateCurrent',
         'call',
         [],
