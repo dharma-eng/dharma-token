@@ -9,6 +9,7 @@ const DharmaUSDCArtifact = require('../../build/contracts/DharmaUSDC.json');
 // abi
 const IERC20Artifact = require('../../build/contracts/ERC20Interface.json');
 const ICTokenArtifact = require('../../build/contracts/CTokenInterface.json');
+const UniswapArtifact = require('../../build/contracts/UniswapInterface.json');
 
 // used to wait for more confirmations
 function longer() {
@@ -50,6 +51,14 @@ class Tester {
 
         this.CUSDC = new this.web3.eth.Contract(
             ICTokenArtifact.abi, constants.CUSDC_MAINNET_ADDRESS
+        );
+
+        this.UNISWAP_DAI = new this.web3.eth.Contract(
+            UniswapArtifact.abi, constants.UNISWAP_DAI_MAINNET_ADDRESS
+        );
+
+        this.UNISWAP_USDC = new this.web3.eth.Contract(
+            UniswapArtifact.abi, constants.UNISWAP_USDC_MAINNET_ADDRESS
         );
 
         const addresses = await this.web3.eth.getAccounts();
@@ -552,41 +561,51 @@ class Tester {
   getEvents(receipt, contractNames) {
     const { events } = receipt;
 
-    return Object.values(events).map(value => {
-
-    // Handle coverage events
-    if (typeof value.raw === 'undefined') return null
-
-    // Handle MKR events independently (Pot and Vat called by cDai)
-    if (value.raw.topics.length === 4) {
-      return {
-        address: contractNames[value.address],
-        eventName: null,
-        returnValues: {
-          selector: value.raw.topics[0].slice(10),
-          caller: this.web3.utils.toChecksumAddress(
-            '0x' + value.raw.topics[1].slice(26)
-          ),
-          arg1: value.raw.topics[2],
-          arg2: value.raw.topics[3]
+    // web3 "helpfully" collects multiple events into arrays... flatten them :)
+    let flattenedEvents = {}
+    for (const e of Object.values(events)) {
+        if (Array.isArray(e)) {
+            for (const n of e) {
+                flattenedEvents[n.logIndex] = n
+            }
+        } else {
+            flattenedEvents[e.logIndex] = e
         }
-      }
     }
 
-    const topic = value.raw.topics[0];
-    const log = constants.EVENT_DETAILS[topic];
-    if (this.context === 'coverage' && typeof log === 'undefined') {
-        return null
-    }
+    return Object.values(flattenedEvents).map(value => {
+        // Handle MKR events independently (Pot and Vat called by cDai)
+        if (value.raw.topics.length === 4) {
+          const callerAddress = this.web3.utils.toChecksumAddress(
+            '0x' + value.raw.topics[1].slice(26)
+          )
+          return {
+            address: contractNames[value.address],
+            eventName: null,
+            returnValues: {
+              selector: value.raw.topics[0].slice(0, 10),
+              caller: (
+                callerAddress in contractNames
+                  ? contractNames[callerAddress]
+                  : callerAddress
+              ),
+              arg1: value.raw.topics[2],
+              arg2: value.raw.topics[3]
+            }
+          }
+        }
 
-    return {
-      address: contractNames[value.address],
-      eventName: log.name,
-      returnValues: this.web3.eth.abi.decodeLog(
-        log.abi, value.raw.data, value.raw.topics.slice(1)
-      )
-    }
-  }).filter(value => value !== null)
+        const topic = value.raw.topics[0];
+        const log = constants.EVENT_DETAILS[topic];
+
+        return {
+          address: contractNames[value.address],
+          eventName: log.name,
+          returnValues: this.web3.eth.abi.decodeLog(
+            log.abi, value.raw.data, value.raw.topics.slice(1)
+          )
+        }
+    }).filter(value => value !== null)
 }}
 
 module.exports = {

@@ -8,5 +8,5 @@ interface UniswapInterface {
 
   function getEthToTokenOutputPrice(
   	uint256 tokensBought
-  ) external view returns (uint256 ethSold);  
+  ) external view returns (uint256 ethSold);
 }

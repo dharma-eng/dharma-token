@@ -1,4 +1,8 @@
 module.exports = {
+  skipFiles: [
+    'Migrations.sol',
+    'test/Uniswapper.sol'
+  ],
   providerOptions: {
     fork: 'https://mainnet.infura.io/v3/4c96c6bab18845dba07ad14cc0c18998',
     default_balance_ether: 10000,
