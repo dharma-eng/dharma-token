@@ -6,10 +6,7 @@ const constants = require('./constants.js');
 let contractNames = constants.CONTRACT_NAMES;
 
 
-async function runAllTests(context) {
-
-    const connection = connectionConfig.networks[context];
-    const web3 = connection.provider;
+async function runAllTests(web3, context) {
 
     const tester = new Tester(web3, context);
     await tester.init();
@@ -213,6 +210,33 @@ async function runAllTests(context) {
         value => {
             assert.strictEqual(value, cDaiSupplyRate.toString())
         }
+    )
+
+    await tester.runTest(
+        'pull surplus',
+        DharmaDai,
+        'pullSurplus',
+        'send',
+        [],
+        true,
+        receipt => {
+            const events = tester.getEvents(receipt, contractNames);
+
+            assert.strictEqual(events.length, 3);
+
+            const accrueEvent = events[0];
+            const transferEvent = events[1];
+            const collectSurplusEvents = events[2];
+
+            assert.strictEqual(accrueEvent.address, 'DDAI');
+            assert.strictEqual(accrueEvent.eventName, 'Accrue');
+
+            assert.strictEqual(transferEvent.address, 'CDAI');
+            assert.strictEqual(transferEvent.eventName, 'Transfer');
+
+            assert.strictEqual(collectSurplusEvents.address, 'DDAI');
+            assert.strictEqual(collectSurplusEvents.eventName, 'CollectSurplus');
+        },
     )
 
     const DharmaUSDC = await tester.runTest(
