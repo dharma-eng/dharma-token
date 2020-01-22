@@ -583,7 +583,7 @@ class Tester {
       address: contractNames[value.address],
       eventName: log.name,
       returnValues: this.web3.eth.abi.decodeLog(
-        log.abi, value.raw.data, value.raw.topics
+        log.abi, value.raw.data, value.raw.topics.slice(1)
       )
     }
   }).filter(value => value !== null)

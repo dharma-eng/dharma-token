@@ -233,8 +233,15 @@ async function runAllTests(web3, context, contract, contractName) {
         }
     )
 
+    storedDTokenExchangeRate = web3.utils.toBN(
+        await web3.eth.getStorageAt(DharmaToken.options.address, 0)
+    )
+    storedCTokenExchangeRate = web3.utils.toBN(
+        await web3.eth.getStorageAt(DharmaToken.options.address, 1)
+    )
+
     await tester.runTest(
-        `${contractName} can pull surplus`,
+        `${contractName} can pull surplus of 0 before any tokens are minted`,
         DharmaToken,
         'pullSurplus',
         'send',
@@ -247,19 +254,53 @@ async function runAllTests(web3, context, contract, contractName) {
 
             const accrueEvent = events[0];
             const transferEvent = events[1];
-            const collectSurplusEvents = events[2];
+            const collectSurplusEvent = events[2];
 
+            // Ensure that accrual is performed correctly
             assert.strictEqual(accrueEvent.address, 'DDAI');
             assert.strictEqual(accrueEvent.eventName, 'Accrue');
-            // TODO: validate accrual
+            dDaiExchangeRate = web3.utils.toBN(
+                accrueEvent.returnValues.dTokenExchangeRate
+            )
+            cDaiExchangeRate = web3.utils.toBN(
+                accrueEvent.returnValues.cTokenExchangeRate
+            )
 
+            cDaiInterest = ((
+                cDaiExchangeRate.mul(tester.SCALING_FACTOR)
+            ).div(storedCTokenExchangeRate)).sub(tester.SCALING_FACTOR)
+
+            dDaiInterest = (cDaiInterest.mul(tester.NINE)).div(tester.TEN)
+
+            calculatedDDaiExchangeRate = (storedDTokenExchangeRate.mul(
+                tester.SCALING_FACTOR.add(dDaiInterest)
+            )).div(tester.SCALING_FACTOR)
+
+            assert.strictEqual(
+                dDaiExchangeRate.toString(),
+                calculatedDDaiExchangeRate.toString()
+            )
+
+            // Ensure that cDai transfer of 0 tokens is performed correctly
             assert.strictEqual(transferEvent.address, 'CDAI');
             assert.strictEqual(transferEvent.eventName, 'Transfer');
-            // TODO: validate transferred surplus amount
+            assert.strictEqual(
+                transferEvent.returnValues.from, DharmaToken.options.address
+            )
+            assert.strictEqual(
+                transferEvent.returnValues.to, constants.VAULT_MAINNET_ADDRESS
+            )
+            assert.strictEqual(transferEvent.returnValues.value, '0')
 
-            assert.strictEqual(collectSurplusEvents.address, 'DDAI');
-            assert.strictEqual(collectSurplusEvents.eventName, 'CollectSurplus');
-            // TODO: validate transferred surplus amount
+            // Ensure that CollectSurplus of 0, 0 is performed correctly
+            assert.strictEqual(collectSurplusEvent.address, 'DDAI');
+            assert.strictEqual(collectSurplusEvent.eventName, 'CollectSurplus');
+            assert.strictEqual(
+                collectSurplusEvent.returnValues.surplusAmount, '0'
+            )
+            assert.strictEqual(
+                collectSurplusEvent.returnValues.surplusCTokens, '0'
+            )
         },
     )
 
