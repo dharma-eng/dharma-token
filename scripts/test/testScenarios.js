@@ -272,25 +272,19 @@ async function testSnapshot(web3, tester) {
     // test takeSnapshot and revertToSnapshot
     const beforeSnapshotBlockNumber = (await web3.eth.getBlock('latest')).number;
 
-    console.log({beforeSnapshotBlockNumber});
+    const snapshot = await tester.takeSnapshot();
 
-    const {id: snapshotId} = await tester.takeSnapshot();
-
-    console.log({snapshotId});
+    const { result: snapshotId } = snapshot;
 
     await tester.advanceBlock();
 
     const newBlockNumber = (await web3.eth.getBlock('latest')).number;
 
-    console.log({newBlockNumber});
-
-    assert.strictEqual(beforeSnapshotBlockNumber, newBlockNumber + 1);
+    assert.strictEqual(beforeSnapshotBlockNumber + 1, newBlockNumber);
 
     await tester.revertToSnapShot(snapshotId);
 
     const blockNumber = (await web3.eth.getBlock('latest')).number;
-
-    console.log({blockNumber});
 
     assert.strictEqual(beforeSnapshotBlockNumber, blockNumber);
 }
