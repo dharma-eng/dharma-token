@@ -22,7 +22,9 @@ async function runAllTests(web3, context, contract, contractName) {
         contractName = 'Dharma Dai'
         DharmaToken = await tester.runTest(
             `${contractName} contract deployment`,
-            contractName === 'Dharma Dai' ? tester.DharmaDaiDeployer : tester.DharmaUSDCDeployer,
+            contractName === 'Dharma Dai'
+                ? tester.DharmaDaiDeployer
+                : tester.DharmaUSDCDeployer,
             '',
             'deploy'
         )
@@ -47,17 +49,20 @@ async function runAllTests(web3, context, contract, contractName) {
     )
 
     let dDaiExchangeRate = web3.utils.toBN('10000000000000000000000000000')
-    await tester.runTest(
-        `${contractName} exchange rate starts at 1e28`,
-        DharmaToken,
-        'exchangeRateCurrent',
-        'call',
-        [],
-        true,
-        value => {
-            assert.strictEqual(value, dDaiExchangeRate.toString())
-        }
-    )
+    // coverage mines a few blocks prior to reaching this point - skip this test
+    if (context !== 'coverage') {
+        await tester.runTest(
+            `${contractName} exchange rate starts at 1e28`,
+            DharmaToken,
+            'exchangeRateCurrent',
+            'call',
+            [],
+            true,
+            value => {
+                assert.strictEqual(value, dDaiExchangeRate.toString())
+            }
+        )
+    }
 
     await tester.runTest(
         'Accrue cDai interest',
@@ -127,9 +132,17 @@ async function runAllTests(web3, context, contract, contractName) {
         }
     )
 
+    // dToken ExchangeRate "checkpoint" is stored at slot zero.
+    let storedDTokenExchangeRate = web3.utils.toBN(
+        await web3.eth.getStorageAt(DharmaToken.options.address, 0)
+    )
+
+    // cToken ExchangeRate "checkpoint" is stored at slot one.
+    let storedCTokenExchangeRate = web3.utils.toBN(
+        await web3.eth.getStorageAt(DharmaToken.options.address, 1)
+    )
+
     let blockNumber = (await web3.eth.getBlock('latest')).number
-    let newDDaiExchangeRate;
-    let newCDaiExchangeRate;
 
     await tester.runTest(
         `${contractName} accrueInterest can be triggered correctly from any account`,
@@ -147,33 +160,30 @@ async function runAllTests(web3, context, contract, contractName) {
             const accrueEvent = events[0];
             assert.strictEqual(accrueEvent.address, 'DDAI')
             assert.strictEqual(accrueEvent.eventName, 'Accrue')
-            newDDaiExchangeRate = web3.utils.toBN(
+            dDaiExchangeRate = web3.utils.toBN(
                 accrueEvent.returnValues.dTokenExchangeRate
             )
-            newCDaiExchangeRate = web3.utils.toBN(
+            cDaiExchangeRate = web3.utils.toBN(
                 accrueEvent.returnValues.cTokenExchangeRate
             )
 
             cDaiInterest = ((
-                newCDaiExchangeRate.mul(tester.SCALING_FACTOR)
-            ).div(cDaiExchangeRate)).sub(tester.SCALING_FACTOR)
+                cDaiExchangeRate.mul(tester.SCALING_FACTOR)
+            ).div(storedCTokenExchangeRate)).sub(tester.SCALING_FACTOR)
 
             dDaiInterest = (cDaiInterest.mul(tester.NINE)).div(tester.TEN)
 
-            calculatedDDaiExchangeRate = (dDaiExchangeRate.mul(
+            calculatedDDaiExchangeRate = (storedDTokenExchangeRate.mul(
                 tester.SCALING_FACTOR.add(dDaiInterest)
             )).div(tester.SCALING_FACTOR)
 
             assert.strictEqual(
-                accrueEvent.returnValues.dTokenExchangeRate,
+                dDaiExchangeRate.toString(),
                 calculatedDDaiExchangeRate.toString()
             )
         },
         tester.originalAddress
     )
-
-    dDaiExchangeRate = newDDaiExchangeRate
-    cDaiExchangeRate = newCDaiExchangeRate
 
     await tester.runTest(
         `${contractName} exchange rate is updated correctly`,
@@ -212,7 +222,7 @@ async function runAllTests(web3, context, contract, contractName) {
     )
 
     await tester.runTest(
-        'cDai static supply rate is unchanged after a dDai accrual',
+        'cDai supply rate is unchanged after dDai accrual (as it did not accrue)',
         tester.CDAI,
         'supplyRatePerBlock',
         'call',
@@ -241,12 +251,15 @@ async function runAllTests(web3, context, contract, contractName) {
 
             assert.strictEqual(accrueEvent.address, 'DDAI');
             assert.strictEqual(accrueEvent.eventName, 'Accrue');
+            // TODO: validate accrual
 
             assert.strictEqual(transferEvent.address, 'CDAI');
             assert.strictEqual(transferEvent.eventName, 'Transfer');
+            // TODO: validate transferred surplus amount
 
             assert.strictEqual(collectSurplusEvents.address, 'DDAI');
             assert.strictEqual(collectSurplusEvents.eventName, 'CollectSurplus');
+            // TODO: validate transferred surplus amount
         },
     )
 

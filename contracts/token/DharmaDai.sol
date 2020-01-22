@@ -46,14 +46,18 @@ contract DharmaDai is ERC20Interface, DTokenInterface {
   // Note: this is just an EOA for the initial prototype.
   address internal constant _VAULT = 0x7e4A8391C728fEd9069B2962699AB416628B19Fa;
 
-  mapping (address => uint256) private _balances;
+  // Slot zero tracks the last stored dDai exchange rate.
+  uint256 private _dDaiExchangeRate;
 
-  mapping (address => mapping (address => uint256)) private _allowances;
+  // Slot one tracks the last stored cDai exchange rate.
+  uint256 private _cDaiExchangeRate;
 
+  // Slot two tracks the total issued dDai tokens.
   uint256 private _totalSupply;
 
-  uint256 private _dDaiExchangeRate;
-  uint256 private _cDaiExchangeRate;
+  // Slots three and four are entrypoints into balance and allowance mappings.
+  mapping (address => uint256) private _balances;
+  mapping (address => mapping (address => uint256)) private _allowances;
 
   constructor() public {
     // Approve cDai to transfer Dai on behalf of this contract in order to mint.
