@@ -1,6 +1,5 @@
 const assert = require('assert');
 const { Tester, longer } = require('./test');
-const connectionConfig = require('../../truffle-config.js');
 const constants = require('./constants.js');
 
 let contractNames = constants.CONTRACT_NAMES;
@@ -10,29 +9,17 @@ const tokenSymbols = {
     "Dharma USDC": "dUSDC"
 };
 
+const DTokenDecimals = 8;
+
 async function runAllTests(web3, context, contractName, contract) {
+
     const tester = new Tester(web3, context);
     await tester.init();
 
+    // Test takeSnapshot and revertToSnapshot
     await testSnapshot(web3, tester);
 
-
-    let cDaiSupplyRate
-    let cDaiExchangeRate
-
-    let DToken;
-    if (contract) {
-        DToken = contract;
-    } else {
-        DToken = await tester.runTest(
-            `${contractName} contract deployment`,
-            contractName === 'Dharma Dai'
-                ? tester.DharmaDaiDeployer
-                : tester.DharmaUSDCDeployer,
-            '',
-            'deploy'
-        )
-    }
+    const DToken = await getOrDeployDTokenContract(contract, tester, contractName);
 
     const CToken = contractName === 'Dharma Dai' ? tester.CDAI : tester.CUSDC;
 
@@ -42,34 +29,36 @@ async function runAllTests(web3, context, contractName, contract) {
         [dTokenAddress]: (
             contractName === 'Dharma Dai' ? 'DDAI' : 'DUSDC'
         )
-    })
+    });
 
     await testPureFunctions(tester, DToken, contractName, tokenSymbols[contractName]);
 
-    await tester.runTest(
-        `${contractName} gets the initial version correctly`,
-        DToken,
-        'getVersion',
-        'call',
-        [],
-        true,
-        value => {
-            assert.strictEqual(value, '0')
+    const dDAIExchangeRate = web3.utils.toBN('10000000000000000000000000000');
+    const dUSDCExchangeRate = web3.utils.toBN('10000000000000000');
+    const initialExchangeRates = {
+        "Dharma Dai": {
+            notation: "1e28",
+            rate: dDAIExchangeRate,
+        },
+        "Dharma USDC": {
+            notation: "1e16",
+            rate: dUSDCExchangeRate
         }
-    )
+    };
 
-    let dDaiExchangeRate = web3.utils.toBN('10000000000000000000000000000')
+
+    let dTokenExchangeRate = initialExchangeRates[contractName];
     // coverage mines a few blocks prior to reaching this point - skip this test
     if (context !== 'coverage') {
         await tester.runTest(
-            `${contractName} exchange rate starts at 1e28`,
+            `${contractName} exchange rate starts at ${dTokenExchangeRate.notation}`,
             DToken,
             'exchangeRateCurrent',
             'call',
             [],
             true,
             value => {
-                assert.strictEqual(value, dDaiExchangeRate.toString())
+                assert.strictEqual(value, dTokenExchangeRate.rate.toString())
             }
         )
     }
@@ -93,6 +82,7 @@ async function runAllTests(web3, context, contractName, contract) {
         }
     )
 
+    let cTokenSupplyRate;
     await tester.runTest(
         `${tokenSymbols[contractName]} supply rate can be retrieved`,
         CToken,
@@ -101,11 +91,11 @@ async function runAllTests(web3, context, contractName, contract) {
         [],
         true,
         value => {
-            cDaiSupplyRate = web3.utils.toBN(value)
+            cTokenSupplyRate = web3.utils.toBN(value)
         }
     )
 
-    let dDaiSupplyRate = (cDaiSupplyRate.mul(tester.NINE)).div(tester.TEN)
+    let dDaiSupplyRate = (cTokenSupplyRate.mul(tester.NINE)).div(tester.TEN)
     await tester.runTest(
         `${contractName} supply rate starts at 90% of cDai supply rate`,
         DToken,
@@ -118,6 +108,7 @@ async function runAllTests(web3, context, contractName, contract) {
         }
     )
 
+    let cTokenExchangeRate;
     await tester.runTest(
         `${tokenSymbols[contractName]} exchange rate can be retrieved`,
         CToken,
@@ -126,7 +117,7 @@ async function runAllTests(web3, context, contractName, contract) {
         [],
         true,
         value => {
-            cDaiExchangeRate = web3.utils.toBN(value)
+             cTokenExchangeRate = web3.utils.toBN(value)
         }
     )
 
@@ -138,7 +129,7 @@ async function runAllTests(web3, context, contractName, contract) {
         [],
         true,
         value => {
-            dDaiExchangeRate = web3.utils.toBN(value)
+            dTokenExchangeRate = web3.utils.toBN(value)
         }
     )
 
@@ -170,15 +161,15 @@ async function runAllTests(web3, context, contractName, contract) {
             const accrueEvent = events[0];
             assert.strictEqual(accrueEvent.address, 'DDAI')
             assert.strictEqual(accrueEvent.eventName, 'Accrue')
-            dDaiExchangeRate = web3.utils.toBN(
+            dTokenExchangeRate = web3.utils.toBN(
                 accrueEvent.returnValues.dTokenExchangeRate
             )
-            cDaiExchangeRate = web3.utils.toBN(
+             cTokenExchangeRate = web3.utils.toBN(
                 accrueEvent.returnValues.cTokenExchangeRate
             )
 
             cDaiInterest = ((
-                cDaiExchangeRate.mul(tester.SCALING_FACTOR)
+                 cTokenExchangeRate.mul(tester.SCALING_FACTOR)
             ).div(storedCTokenExchangeRate)).sub(tester.SCALING_FACTOR)
 
             dDaiInterest = (cDaiInterest.mul(tester.NINE)).div(tester.TEN)
@@ -188,7 +179,7 @@ async function runAllTests(web3, context, contractName, contract) {
             )).div(tester.SCALING_FACTOR)
 
             assert.strictEqual(
-                dDaiExchangeRate.toString(),
+                dTokenExchangeRate.toString(),
                 calculatedDDaiExchangeRate.toString()
             )
         },
@@ -203,7 +194,7 @@ async function runAllTests(web3, context, contractName, contract) {
         [],
         true,
         value => {
-            assert.strictEqual(value, dDaiExchangeRate.toString())
+            assert.strictEqual(value, dTokenExchangeRate.toString())
         }
     )
 
@@ -227,7 +218,7 @@ async function runAllTests(web3, context, contractName, contract) {
         [],
         true,
         value => {
-            assert.strictEqual(value, cDaiExchangeRate.toString())
+            assert.strictEqual(value,  cTokenExchangeRate.toString())
         }
     )
 
@@ -239,7 +230,7 @@ async function runAllTests(web3, context, contractName, contract) {
         [],
         true,
         value => {
-            assert.strictEqual(value, cDaiSupplyRate.toString())
+            assert.strictEqual(value, cTokenSupplyRate.toString())
         }
     )
 
@@ -269,15 +260,15 @@ async function runAllTests(web3, context, contractName, contract) {
             // Ensure that accrual is performed correctly
             assert.strictEqual(accrueEvent.address, 'DDAI');
             assert.strictEqual(accrueEvent.eventName, 'Accrue');
-            dDaiExchangeRate = web3.utils.toBN(
+            dTokenExchangeRate = web3.utils.toBN(
                 accrueEvent.returnValues.dTokenExchangeRate
             )
-            cDaiExchangeRate = web3.utils.toBN(
+             cTokenExchangeRate = web3.utils.toBN(
                 accrueEvent.returnValues.cTokenExchangeRate
             )
 
             cDaiInterest = ((
-                cDaiExchangeRate.mul(tester.SCALING_FACTOR)
+                 cTokenExchangeRate.mul(tester.SCALING_FACTOR)
             ).div(storedCTokenExchangeRate)).sub(tester.SCALING_FACTOR)
 
             dDaiInterest = (cDaiInterest.mul(tester.NINE)).div(tester.TEN)
@@ -287,7 +278,7 @@ async function runAllTests(web3, context, contractName, contract) {
             )).div(tester.SCALING_FACTOR)
 
             assert.strictEqual(
-                dDaiExchangeRate.toString(),
+                dTokenExchangeRate.toString(),
                 calculatedDDaiExchangeRate.toString()
             )
 
@@ -330,6 +321,20 @@ async function runAllTests(web3, context, contractName, contract) {
     return 0
 }
 
+async function getOrDeployDTokenContract(contract, tester, contractName) {
+    if (contract) {
+        return contract;
+    }
+    return await tester.runTest(
+        `${contractName} contract deployment`,
+        contractName === 'Dharma Dai'
+            ? tester.DharmaDaiDeployer
+            : tester.DharmaUSDCDeployer,
+        '',
+        'deploy'
+    );
+}
+
 async function testSnapshot(web3, tester) {
     // test takeSnapshot and revertToSnapshot
     const beforeSnapshotBlockNumber = (await web3.eth.getBlock('latest')).number;
@@ -351,30 +356,54 @@ async function testSnapshot(web3, tester) {
     assert.strictEqual(beforeSnapshotBlockNumber, blockNumber);
 }
 
-async function testPureFunctions(tester, dTokenContract, dTokenName, dTokenSymbol) {
+async function testPureFunctions(tester, DTokenContract, DTokenName, DTokenSymbol) {
     await tester.runTest(
-        `${dTokenName} gets name correctly`,
-        dTokenContract,
+        `${DTokenName} gets the initial version correctly`,
+        DTokenContract,
+        'getVersion',
+        'call',
+        [],
+        true,
+        value => {
+            assert.strictEqual(value, '0')
+        }
+    );
+
+    await tester.runTest(
+        `${DTokenName} gets name correctly`,
+        DTokenContract,
         'name',
         'call',
         [],
         true,
         value => {
-            assert.strictEqual(value, dTokenName)
+            assert.strictEqual(value, DTokenName)
         }
-    )
+    );
 
     await tester.runTest(
-        `${dTokenName} gets symbol correctly`,
-        dTokenContract,
+        `${DTokenName} gets symbol correctly`,
+        DTokenContract,
         'symbol',
         'call',
         [],
         true,
         value => {
-            assert.strictEqual(value, dTokenSymbol)
+            assert.strictEqual(value, DTokenSymbol)
         }
-    )
+    );
+
+    await tester.runTest(
+        `${DTokenName} gets decimals correctly`,
+        DTokenContract,
+        'decimals',
+        'call',
+        [],
+        true,
+        value => {
+            assert.strictEqual(value, DTokenDecimals.toString())
+        }
+    );
 }
 
 module.exports ={

@@ -10,7 +10,7 @@ const { runAllTests } = require("./testScenarios");
 async function runTests(contract, contractName) {
   const context = 'coverage';
   await deployMockExternal.test(web3Provider, context)
-  await runAllTests(web3Provider, context, contract, contractName);
+  await runAllTests(web3Provider, context, contractName, contract);
 }
 
 // "use mocha" ;)
