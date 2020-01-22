@@ -156,6 +156,48 @@ class Tester {
         )
     }
 
+    async takeSnapshot() {
+        return new Promise((resolve, reject) => {
+            this.web3.currentProvider.send({
+                jsonrpc: '2.0',
+                method: 'evm_snapshot',
+                id: new Date().getTime()
+            }, (err, snapshotId) => {
+                if (err) { return reject(err) }
+                return resolve(snapshotId)
+            })
+        })
+    }
+
+    async revertToSnapShot(id) {
+        return new Promise((resolve, reject) => {
+            this.web3.currentProvider.send({
+                jsonrpc: '2.0',
+                method: 'evm_revert',
+                params: [id],
+                id: new Date().getTime()
+            }, (err, result) => {
+                if (err) { return reject(err) }
+                return resolve(result)
+            })
+        })
+    }
+
+    async advanceBlock() {
+        return new Promise((resolve, reject) => {
+            this.web3.currentProvider.send({
+                jsonrpc: '2.0',
+                method: 'evm_mine',
+                id: new Date().getTime()
+            }, (err, result) => {
+                if (err) { return reject(err) }
+                const newBlockHash = this.web3.eth.getBlock('latest').hash
+
+                return resolve(newBlockHash)
+            })
+        })
+    }
+
     signHashedPrefixedHexString(hashedHexString, account) {
         const sig = util.ecsign(
             util.toBuffer(this.web3.utils.keccak256(

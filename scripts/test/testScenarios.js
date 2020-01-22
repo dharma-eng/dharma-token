@@ -11,6 +11,8 @@ async function runAllTests(web3, context) {
     const tester = new Tester(web3, context);
     await tester.init();
 
+    await testSnapshot(web3, tester);
+
     let cDaiSupplyRate
     let cDaiExchangeRate
     const DharmaDai = await tester.runTest(
@@ -266,6 +268,35 @@ async function runAllTests(web3, context) {
     return 0
 }
 
+async function testSnapshot(web3, tester) {
+    // test takeSnapshot and revertToSnapshot
+    const beforeSnapshotBlockNumber = (await web3.eth.getBlock('latest')).number;
+
+    console.log({beforeSnapshotBlockNumber});
+
+    const {id: snapshotId} = await tester.takeSnapshot();
+
+    console.log({snapshotId});
+
+    await tester.advanceBlock();
+
+    const newBlockNumber = (await web3.eth.getBlock('latest')).number;
+
+    console.log({newBlockNumber});
+
+    assert.strictEqual(beforeSnapshotBlockNumber, newBlockNumber + 1);
+
+    await tester.revertToSnapShot(snapshotId);
+
+    const blockNumber = (await web3.eth.getBlock('latest')).number;
+
+    console.log({blockNumber});
+
+    assert.strictEqual(beforeSnapshotBlockNumber, blockNumber);
+}
+
+
 module.exports ={
     runAllTests,
 };
+
