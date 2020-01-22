@@ -5,22 +5,26 @@ const constants = require('./constants.js');
 
 let contractNames = constants.CONTRACT_NAMES;
 
+const tokenSymbols = {
+    "Dharma Dai": "dDai",
+    "Dharma USDC": "dUSDC"
+};
 
-async function runAllTests(web3, context, contract, contractName) {
+async function runAllTests(web3, context, contractName, contract) {
     const tester = new Tester(web3, context);
     await tester.init();
 
     await testSnapshot(web3, tester);
 
+
     let cDaiSupplyRate
     let cDaiExchangeRate
 
-    let DharmaToken;
+    let DToken;
     if (contract) {
-        DharmaToken = contract;
+        DToken = contract;
     } else {
-        contractName = 'Dharma Dai'
-        DharmaToken = await tester.runTest(
+        DToken = await tester.runTest(
             `${contractName} contract deployment`,
             contractName === 'Dharma Dai'
                 ? tester.DharmaDaiDeployer
@@ -30,15 +34,21 @@ async function runAllTests(web3, context, contract, contractName) {
         )
     }
 
+    const CToken = contractName === 'Dharma Dai' ? tester.CDAI : tester.CUSDC;
+
+    const { options: { address: dTokenAddress  } } = DToken;
+
     contractNames = Object.assign(contractNames, {
-        [DharmaToken.options.address]: (
+        [dTokenAddress]: (
             contractName === 'Dharma Dai' ? 'DDAI' : 'DUSDC'
         )
     })
 
+    await testPureFunctions(tester, DToken, contractName, tokenSymbols[contractName]);
+
     await tester.runTest(
         `${contractName} gets the initial version correctly`,
-        DharmaToken,
+        DToken,
         'getVersion',
         'call',
         [],
@@ -53,7 +63,7 @@ async function runAllTests(web3, context, contract, contractName) {
     if (context !== 'coverage') {
         await tester.runTest(
             `${contractName} exchange rate starts at 1e28`,
-            DharmaToken,
+            DToken,
             'exchangeRateCurrent',
             'call',
             [],
@@ -65,8 +75,8 @@ async function runAllTests(web3, context, contract, contractName) {
     }
 
     await tester.runTest(
-        'Accrue cDai interest',
-        tester.CDAI,
+        `Accrue ${tokenSymbols[contractName]} interest`,
+        CToken,
         'accrueInterest',
         'send',
         [],
@@ -84,8 +94,8 @@ async function runAllTests(web3, context, contract, contractName) {
     )
 
     await tester.runTest(
-        'cDai supply rate can be retrieved',
-        tester.CDAI,
+        `${tokenSymbols[contractName]} supply rate can be retrieved`,
+        CToken,
         'supplyRatePerBlock',
         'call',
         [],
@@ -98,7 +108,7 @@ async function runAllTests(web3, context, contract, contractName) {
     let dDaiSupplyRate = (cDaiSupplyRate.mul(tester.NINE)).div(tester.TEN)
     await tester.runTest(
         `${contractName} supply rate starts at 90% of cDai supply rate`,
-        DharmaToken,
+        DToken,
         'supplyRatePerBlock',
         'call',
         [],
@@ -109,8 +119,8 @@ async function runAllTests(web3, context, contract, contractName) {
     )
 
     await tester.runTest(
-        'cDai exchange rate can be retrieved',
-        tester.CDAI,
+        `${tokenSymbols[contractName]} exchange rate can be retrieved`,
+        CToken,
         'exchangeRateCurrent',
         'call',
         [],
@@ -122,7 +132,7 @@ async function runAllTests(web3, context, contract, contractName) {
 
     await tester.runTest(
         `${contractName} exchange rate can be retrieved`,
-        DharmaToken,
+        DToken,
         'exchangeRateCurrent',
         'call',
         [],
@@ -134,19 +144,19 @@ async function runAllTests(web3, context, contract, contractName) {
 
     // dToken ExchangeRate "checkpoint" is stored at slot zero.
     let storedDTokenExchangeRate = web3.utils.toBN(
-        await web3.eth.getStorageAt(DharmaToken.options.address, 0)
+        await web3.eth.getStorageAt(DToken.options.address, 0)
     )
 
     // cToken ExchangeRate "checkpoint" is stored at slot one.
     let storedCTokenExchangeRate = web3.utils.toBN(
-        await web3.eth.getStorageAt(DharmaToken.options.address, 1)
+        await web3.eth.getStorageAt(DToken.options.address, 1)
     )
 
     let blockNumber = (await web3.eth.getBlock('latest')).number
 
     await tester.runTest(
         `${contractName} accrueInterest can be triggered correctly from any account`,
-        DharmaToken,
+        DToken,
         'accrueInterest',
         'send',
         [],
@@ -187,7 +197,7 @@ async function runAllTests(web3, context, contract, contractName) {
 
     await tester.runTest(
         `${contractName} exchange rate is updated correctly`,
-        DharmaToken,
+        DToken,
         'exchangeRateCurrent',
         'call',
         [],
@@ -199,7 +209,7 @@ async function runAllTests(web3, context, contract, contractName) {
 
     await tester.runTest(
         `${contractName} supply rate is updated after an accrual`,
-        DharmaToken,
+        DToken,
         'supplyRatePerBlock',
         'call',
         [],
@@ -210,8 +220,8 @@ async function runAllTests(web3, context, contract, contractName) {
     )
 
     await tester.runTest(
-        'cDai exchange rate is updated correctly',
-        tester.CDAI,
+        `${tokenSymbols[contractName]} exchange rate is updated correctly`,
+        CToken,
         'exchangeRateCurrent',
         'call',
         [],
@@ -222,8 +232,8 @@ async function runAllTests(web3, context, contract, contractName) {
     )
 
     await tester.runTest(
-        'cDai supply rate is unchanged after dDai accrual (as it did not accrue)',
-        tester.CDAI,
+        `${tokenSymbols[contractName]} supply rate is unchanged after dDai accrual (as it did not accrue)`,
+        CToken,
         'supplyRatePerBlock',
         'call',
         [],
@@ -234,15 +244,15 @@ async function runAllTests(web3, context, contract, contractName) {
     )
 
     storedDTokenExchangeRate = web3.utils.toBN(
-        await web3.eth.getStorageAt(DharmaToken.options.address, 0)
+        await web3.eth.getStorageAt(DToken.options.address, 0)
     )
     storedCTokenExchangeRate = web3.utils.toBN(
-        await web3.eth.getStorageAt(DharmaToken.options.address, 1)
+        await web3.eth.getStorageAt(DToken.options.address, 1)
     )
 
     await tester.runTest(
         `${contractName} can pull surplus of 0 before any tokens are minted`,
-        DharmaToken,
+        DToken,
         'pullSurplus',
         'send',
         [],
@@ -285,7 +295,7 @@ async function runAllTests(web3, context, contract, contractName) {
             assert.strictEqual(transferEvent.address, 'CDAI');
             assert.strictEqual(transferEvent.eventName, 'Transfer');
             assert.strictEqual(
-                transferEvent.returnValues.from, DharmaToken.options.address
+                transferEvent.returnValues.from, DToken.options.address
             )
             assert.strictEqual(
                 transferEvent.returnValues.to, constants.VAULT_MAINNET_ADDRESS
@@ -341,6 +351,31 @@ async function testSnapshot(web3, tester) {
     assert.strictEqual(beforeSnapshotBlockNumber, blockNumber);
 }
 
+async function testPureFunctions(tester, dTokenContract, dTokenName, dTokenSymbol) {
+    await tester.runTest(
+        `${dTokenName} gets name correctly`,
+        dTokenContract,
+        'name',
+        'call',
+        [],
+        true,
+        value => {
+            assert.strictEqual(value, dTokenName)
+        }
+    )
+
+    await tester.runTest(
+        `${dTokenName} gets symbol correctly`,
+        dTokenContract,
+        'symbol',
+        'call',
+        [],
+        true,
+        value => {
+            assert.strictEqual(value, dTokenSymbol)
+        }
+    )
+}
 
 module.exports ={
     runAllTests,
