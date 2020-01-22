@@ -7,12 +7,19 @@ var deployMockExternal = require('./deployMockExternal.js')
 const { runAllTests } = require("./testScenarios");
 
 // run tests
-async function runTests() {
+async function runTests(contract, contractName) {
   const context = 'coverage';
-
   await deployMockExternal.test(web3Provider, context)
-  await runAllTests(web3Provider, context);
-  process.exit(0)
+  await runAllTests(web3Provider, context, contract, contractName);
 }
 
-runTests()
+// "use mocha" ;)
+const DharmaDai = artifacts.require("./token/DharmaDai.sol")
+contract("DharmaDai", accounts => {
+  it("should run all tests", async () => {
+  	const instance = await DharmaDai.deployed()
+  	await runTests(instance.contract, 'Dharma Dai')
+  	//console.log('1')
+    return instance
+  })
+})
