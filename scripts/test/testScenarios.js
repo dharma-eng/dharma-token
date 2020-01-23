@@ -1003,7 +1003,7 @@ async function runAllTests(web3, context, contractName, contract) {
                 assert.strictEqual(value, underlyingAmountTransfered.toString());
             },
         );
-        //
+
         // await tester.runTest(
         //     `${contractName} exchange rate can be retrieved`,
         //     DToken,
@@ -1015,9 +1015,9 @@ async function runAllTests(web3, context, contractName, contract) {
         //         dTokenExchangeRate = web3.utils.toBN(value)
         //     }
         // );
-        //
+
         // const leftOverUnderlying = initialUnderlyingAmount.sub(underlyingAmountTransfered);
-        //
+
         // await tester.runTest(
         //     `Check transfer sender has correct balance`,
         //     DToken,
@@ -1030,7 +1030,7 @@ async function runAllTests(web3, context, contractName, contract) {
         //         assert.strictEqual(value, leftOverUnderlying.toString());
         //     },
         // );
-        //
+
         await tester.revertToSnapShot(snapshotId);
     }
 
@@ -1159,9 +1159,7 @@ async function runAllTests(web3, context, contractName, contract) {
             tester.addressTwo
         );
 
-        // const balanceWithInterest = "";
-        //
-        // const leftOverBalance = calculatedTransferAmount.sub(balanceAmountWithInterest);
+
         // await tester.runTest(
         //     `Check transfer sender sent correct amount`,
         //     DToken,
@@ -1170,7 +1168,7 @@ async function runAllTests(web3, context, contractName, contract) {
         //     [tester.address],
         //     true,
         //     value => {
-        //         assert.strictEqual(value, leftOverBalance.toString());
+        //         assert.strictEqual(value, "");
         //     },
         // );
 
@@ -1371,12 +1369,12 @@ async function runAllTests(web3, context, contractName, contract) {
     }
 
     await testMint();
-    // await testTransfer();
-    // await testTransferFrom();
-    // await testAllowance();
-    // await testTransferUnderlying();
+    await testTransfer();
+    await testTransferFrom();
+    await testAllowance();
+    await testTransferUnderlying();
     await testTransferUnderlyingFrom();
-    // await testApprove();
+    await testApprove();
 
 
     console.log(
