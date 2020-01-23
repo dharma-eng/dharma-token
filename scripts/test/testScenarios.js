@@ -437,6 +437,18 @@ async function runAllTests(web3, context, contractName, contract) {
             }
         );
 
+        await tester.runTest(
+            `${tokenSymbols[contractName]} total underlying supply is 0 before mint`,
+            DToken,
+            'totalSupplyUnderlying',
+            'call',
+            [],
+            true,
+            value => {
+                assert.strictEqual(value, '0')
+            }
+        );
+
         [
             storedDTokenExchangeRate,
             storedCTokenExchangeRate,
@@ -682,6 +694,21 @@ async function runAllTests(web3, context, contractName, contract) {
                 assert.strictEqual(value, totalDTokensMinted)
             }
         )
+
+        const totalSupply = web3.utils.toBN(totalDTokensMinted);
+        const exchangeRate = web3.utils.toBN(dTokenExchangeRate);
+        const expectedTotalSupplyUnderlying = (totalSupply.mul(exchangeRate)).div(tester.SCALING_FACTOR);
+        await tester.runTest(
+            `${tokenSymbols[contractName]} total underlying supply is correct after mint`,
+            DToken,
+            'totalSupplyUnderlying',
+            'call',
+            [],
+            true,
+            value => {
+                assert.strictEqual(value, expectedTotalSupplyUnderlying.toString())
+            }
+        )
     }
 
     async function testTransfer() {
@@ -903,7 +930,7 @@ async function runAllTests(web3, context, contractName, contract) {
 
         let initialUnderlyingAmount;
         await tester.runTest(
-            `Get total underlying Dai balance`,
+            `Get total underlying ${underlyingSymbols[contractName]} balance`,
             DToken,
             'balanceOfUnderlying',
             'call',
@@ -962,8 +989,8 @@ async function runAllTests(web3, context, contractName, contract) {
             }
         );
 
-        const dDaitransferAmount = (initialUnderlyingAmount.mul(tester.SCALING_FACTOR)).div(dTokenExchangeRate);
-        const underlyingAmountTransfered = (dDaitransferAmount.mul(dTokenExchangeRate)).div(tester.SCALING_FACTOR);
+        const dTokentransferAmount = (initialUnderlyingAmount.mul(tester.SCALING_FACTOR)).div(dTokenExchangeRate);
+        const underlyingAmountTransfered = (dTokentransferAmount.mul(dTokenExchangeRate)).div(tester.SCALING_FACTOR);
 
         await tester.runTest(
             `Check transfer recipient received correct amount`,
@@ -1004,6 +1031,173 @@ async function runAllTests(web3, context, contractName, contract) {
         //     },
         // );
         //
+        await tester.revertToSnapShot(snapshotId);
+    }
+
+    async function testTransferUnderlyingFrom() {
+        const snapshot = await tester.takeSnapshot();
+        const { result: snapshotId } = snapshot;
+
+        let balanceAmount;
+        await tester.runTest(
+            `Get total underlying ${underlyingSymbols[contractName]} balance`,
+            DToken,
+            'balanceOf',
+            'call',
+            [tester.address],
+            true,
+            value => {
+                balanceAmount = web3.utils.toBN(value)
+            },
+        );
+
+        let transferUnderlyingAmount;
+        await tester.runTest(
+            `Get total underlying ${underlyingSymbols[contractName]} balance`,
+            DToken,
+            'balanceOfUnderlying',
+            'call',
+            [tester.address],
+            true,
+            value => {
+                transferUnderlyingAmount = web3.utils.toBN(value)
+            },
+        );
+
+        [
+            storedDTokenExchangeRate,
+            storedCTokenExchangeRate,
+            blockNumber
+        ] = await prepareToValidateAccrual(web3, DToken);
+
+        const dTokenAllowance = (
+            transferUnderlyingAmount.mul(storedDTokenExchangeRate)
+        ).div(tester.SCALING_FACTOR);
+
+        await tester.runTest(
+            `${contractName} can increase dTokens allowance`,
+            DToken,
+            'increaseAllowance',
+            'send',
+            [tester.addressTwo, dTokenAllowance.toString()],
+            true,
+            receipt => {
+                const events = tester.getEvents(receipt, contractNames);
+                assert.strictEqual(events.length, 1);
+
+                // Approval Event
+                const approvalEvent = events[0];
+                assert.strictEqual(
+                    approvalEvent.address,
+                    tokenSymbols[contractName].toUpperCase()
+                )
+                assert.strictEqual(approvalEvent.eventName, 'Approval');
+
+                const { returnValues: approvalReturnValues } = approvalEvent;
+
+                assert.strictEqual(approvalReturnValues.owner, tester.address);
+                assert.strictEqual(approvalReturnValues.spender, tester.addressTwo);
+                assert.strictEqual(approvalReturnValues.value, dTokenAllowance.toString());
+            }
+        );
+
+        let approvedAllowance;
+        let calculatedTransferAmount;
+        await tester.runTest(
+            `${contractName} can transferUnderlyingFrom dTokens`,
+            DToken,
+            'transferUnderlyingFrom',
+            'send',
+            [tester.address, tester.addressTwo, transferUnderlyingAmount.toString()],
+            true,
+            receipt => {
+                const events = tester.getEvents(receipt, contractNames);
+
+                assert.strictEqual(events.length, 3);
+
+                [dTokenExchangeRate, cTokenExchangeRate] = validateDTokenAccrueEvent(
+                    events, 0, contractName, web3, tester, storedDTokenExchangeRate, storedCTokenExchangeRate
+                );
+
+                // Transfer Event
+                const dTokenTransferEvent = events[1];
+
+                assert.strictEqual(
+                    dTokenTransferEvent.address,
+                    tokenSymbols[contractName].toUpperCase()
+                )
+                assert.strictEqual(dTokenTransferEvent.eventName, 'Transfer');
+
+                const { returnValues: transferReturnValues } = dTokenTransferEvent;
+
+                calculatedTransferAmount = (
+                    transferUnderlyingAmount.mul(tester.SCALING_FACTOR)
+                ).div(dTokenExchangeRate);
+
+                assert.strictEqual(transferReturnValues.from, tester.address);
+                assert.strictEqual(transferReturnValues.to, tester.addressTwo);
+                assert.strictEqual(transferReturnValues.value, calculatedTransferAmount.toString());
+
+
+                // Approval Event
+                const approvalEvent = events[2];
+                assert.strictEqual(
+                    approvalEvent.address,
+                    tokenSymbols[contractName].toUpperCase()
+                )
+                assert.strictEqual(approvalEvent.eventName, 'Approval');
+
+                const { returnValues: approvalReturnValues } = approvalEvent;
+
+                approvedAllowance = dTokenAllowance.sub(calculatedTransferAmount);
+
+                assert.strictEqual(approvalReturnValues.owner, tester.address);
+                assert.strictEqual(approvalReturnValues.spender, tester.addressTwo);
+                assert.strictEqual(approvalReturnValues.value, approvedAllowance.toString());
+
+            },
+            tester.addressTwo
+        );
+
+        // const balanceWithInterest = "";
+        //
+        // const leftOverBalance = calculatedTransferAmount.sub(balanceAmountWithInterest);
+        // await tester.runTest(
+        //     `Check transfer sender sent correct amount`,
+        //     DToken,
+        //     'balanceOf',
+        //     'call',
+        //     [tester.address],
+        //     true,
+        //     value => {
+        //         assert.strictEqual(value, leftOverBalance.toString());
+        //     },
+        // );
+
+        await tester.runTest(
+            `Check transfer recipient received correct amount`,
+            DToken,
+            'balanceOf',
+            'call',
+            [tester.addressTwo],
+            true,
+            value => {
+                assert.strictEqual(value, calculatedTransferAmount.toString());
+            },
+        )
+
+        await tester.runTest(
+            `Check transfer recipient has correct allowance`,
+            DToken,
+            'allowance',
+            'call',
+            [tester.address, tester.addressTwo],
+            true,
+            value => {
+                assert.strictEqual(value, approvedAllowance.toString());
+            },
+        )
+
         await tester.revertToSnapShot(snapshotId);
     }
 
@@ -1117,11 +1311,72 @@ async function runAllTests(web3, context, contractName, contract) {
         await tester.revertToSnapShot(snapshotId);
     }
 
+    async function testApprove() {
+        const snapshot = await tester.takeSnapshot();
+        const { result: snapshotId } = snapshot;
+
+        let approveAmount;
+        await tester.runTest(
+            `Get total ${tokenSymbols[contractName]} balance`,
+            DToken,
+            'balanceOf',
+            'call',
+            [tester.address],
+            true,
+            value => {
+                approveAmount = value.toString()
+            },
+        );
+
+        await tester.runTest(
+            `${contractName} can approve dToken allowance`,
+            DToken,
+            'approve',
+            'send',
+            [tester.addressTwo, approveAmount],
+            true,
+            receipt => {
+                const events = tester.getEvents(receipt, contractNames);
+                assert.strictEqual(events.length, 1);
+
+                // Approval Event
+                const approvalEvent = events[0];
+                assert.strictEqual(
+                    approvalEvent.address,
+                    tokenSymbols[contractName].toUpperCase()
+                )
+                assert.strictEqual(approvalEvent.eventName, 'Approval');
+
+                const { returnValues: approvalReturnValues } = approvalEvent;
+
+                assert.strictEqual(approvalReturnValues.owner, tester.address);
+                assert.strictEqual(approvalReturnValues.spender, tester.addressTwo);
+                assert.strictEqual(approvalReturnValues.value, approveAmount);
+            }
+        );
+
+        await tester.runTest(
+            `Check ${tokenSymbols[contractName]} allowance is set correctly after approve`,
+            DToken,
+            'allowance',
+            'call',
+            [tester.address, tester.addressTwo],
+            true,
+            value => {
+                assert.strictEqual(value, approveAmount);
+            },
+        );
+
+        await tester.revertToSnapShot(snapshotId);
+    }
+
     await testMint();
-    await testTransfer();
-    await testTransferFrom();
-    await testAllowance();
-    await testTransferUnderlying();
+    // await testTransfer();
+    // await testTransferFrom();
+    // await testAllowance();
+    // await testTransferUnderlying();
+    await testTransferUnderlyingFrom();
+    // await testApprove();
 
 
     console.log(
