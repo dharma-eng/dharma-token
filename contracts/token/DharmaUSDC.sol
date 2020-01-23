@@ -4,7 +4,7 @@ import "@openzeppelin/contracts/math/SafeMath.sol";
 import "../../interfaces/CTokenInterface.sol";
 import "../../interfaces/DTokenInterface.sol";
 import "../../interfaces/ERC20Interface.sol";
-import "../../interfaces/InterestRateModelInterface.sol";
+import "../../interfaces/CUSDCInterestRateModelInterface.sol";
 
 
 /**
@@ -25,8 +25,7 @@ contract DharmaUSDC is ERC20Interface, DTokenInterface {
   uint8 internal constant _DECIMALS = 8; // to match cUSDC
 
   uint256 internal constant _SCALING_FACTOR = 1e18;
-  uint256 internal constant _NINETY_PERCENT = 9e17;
-  uint256 internal constant _TEN_PERCENT = 1e17;
+  uint256 internal constant _SCALING_FACTOR_SQUARED = 1e36;
   uint256 internal constant _COMPOUND_SUCCESS = 0;
 
   CTokenInterface internal constant _CUSDC = CTokenInterface(
@@ -650,7 +649,7 @@ contract DharmaUSDC is ERC20Interface, DTokenInterface {
     uint256 cash = _USDC.balanceOf(address(_CUSDC));
 
     // Get the latest interest rate model from the cUSDC contract.
-    InterestRateModelInterface interestRateModel = InterestRateModelInterface(
+    CUSDCInterestRateModelInterface interestRateModel = CUSDCInterestRateModelInterface(
       _CUSDC.interestRateModel()
     );
 
@@ -660,23 +659,35 @@ contract DharmaUSDC is ERC20Interface, DTokenInterface {
     uint256 reserveFactor = _CUSDC.reserveFactorMantissa();
 
     // Get accumulated borrow interest via interest rate model and block delta.
-    uint256 interest = interestRateModel.getBorrowRate(
+    (uint256 err, uint256 borrowRate) = interestRateModel.getBorrowRate(
       cash, borrows, reserves
-    ).mul(blockDelta).mul(borrows) / _SCALING_FACTOR;
+    );
+
+    require(
+      err == _COMPOUND_SUCCESS, "Interest Rate Model borrow rate check failed."
+    );
+
+    uint256 interest = borrowRate.mul(blockDelta).mul(borrows) / _SCALING_FACTOR;
 
     // Update total borrows and reserves using calculated accumulated interest.
     borrows = borrows.add(interest);
     reserves = reserves.add(reserveFactor.mul(interest) / _SCALING_FACTOR);
 
-    // Determine cUSDC exchange rate: (cash + borrows - reserves) / total supply
-    exchangeRate = (
-      ((cash.add(borrows)).sub(reserves)).mul(_SCALING_FACTOR)
-    ).div(_CUSDC.totalSupply());
+    // Get "underlying": (cash + borrows - reserves)
+    uint256 underlying = (cash.add(borrows)).sub(reserves);
 
-    // Get supply rate via interest rate model and calculated parameters.
-    supplyRate = interestRateModel.getSupplyRate(
-      cash, borrows, reserves, reserveFactor
-    );
+    // Determine cUSDC exchange rate: underlying / total supply
+    exchangeRate = (underlying.mul(_SCALING_FACTOR)).div(_CUSDC.totalSupply());
+
+    // Get "borrows per" by dividing total borrows by underlying and scaling up.
+    uint256 borrowsPer = (
+      borrows.mul(_SCALING_FACTOR_SQUARED)
+    ).div(underlying);
+
+    // Supply rate is borrow interest * (1 - reserveFactor) * borrowsPer
+    supplyRate = (
+      interest.mul(_SCALING_FACTOR.sub(reserveFactor)).mul(borrowsPer)
+    ) / _SCALING_FACTOR_SQUARED;
   }
 
   /**

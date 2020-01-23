@@ -9,12 +9,48 @@ const tokenSymbols = {
     "Dharma USDC": "dUSDC"
 };
 
+const underlyingSymbols = {
+    "Dharma Dai": "Dai",
+    "Dharma USDC": "USDC"
+};
+
+const underlyingDecimals = {
+    "Dharma Dai": 18,
+    "Dharma USDC": 6   
+}
+
 const cTokenSymbols = {
     "Dharma Dai": "cDai",
     "Dharma USDC": "cUSDC"
 };
 
 const DTokenDecimals = 8;
+
+const validateCTokenInterestAccrualEvents = (
+    parsedEvents, eventIndex, cTokenSymbol
+) => {
+    if (cTokenSymbol === 'cDai') {
+        // 'suck' on Vat, 'drip' on Pot, 'accrueInterest' on cDai
+        const events = parsedEvents.slice(eventIndex, eventIndex + 3)
+        assert.strictEqual(events.length, 3)
+
+        assert.strictEqual(events[0].address, 'MKR-VAT')
+        assert.strictEqual(events[0].returnValues.caller, 'MKR-VOW')
+
+        assert.strictEqual(events[1].address, 'MKR-POT')
+        assert.strictEqual(events[1].returnValues.caller, 'CDAI')
+
+        assert.strictEqual(events[2].address, 'CDAI')
+        assert.strictEqual(events[2].eventName, 'AccrueInterest')
+    } else {
+        // just 'accrueInterest' on cUSDC
+        const events = parsedEvents.slice(eventIndex, eventIndex + 1)
+        assert.strictEqual(events.length, 1)
+
+        assert.strictEqual(events[0].address, 'CUSDC')
+        assert.strictEqual(events[0].eventName, 'AccrueInterest')  
+    }
+}
 
 async function runAllTests(web3, context, contractName, contract) {
 
@@ -27,6 +63,12 @@ async function runAllTests(web3, context, contractName, contract) {
     const DToken = await getOrDeployDTokenContract(contract, tester, contractName);
 
     const CToken = contractName === 'Dharma Dai' ? tester.CDAI : tester.CUSDC;
+
+    const Underlying = contractName === 'Dharma Dai' ? tester.DAI : tester.USDC;
+
+    const Uniswap = (
+        contractName === 'Dharma Dai' ? tester.UNISWAP_DAI : tester.UNISWAP_USDC
+    );
 
     const { options: { address: dTokenAddress  } } = DToken;
 
@@ -66,12 +108,9 @@ async function runAllTests(web3, context, contractName, contract) {
         receipt => {
             const events = tester.getEvents(receipt, contractNames)
 
-            // 'suck' on Vat, 'drip' on Pot, 'accrueInterest' on cDai
-            assert.strictEqual(events.length, 3)
-
-            assert.strictEqual(events[0].address, 'MKR-VAT')
-            assert.strictEqual(events[1].address, 'MKR-POT')
-            assert.strictEqual(events[2].address, 'CDAI')
+            validateCTokenInterestAccrualEvents(
+                events, 0, cTokenSymbols[contractName]
+            )
         }
     )
 
@@ -88,7 +127,7 @@ async function runAllTests(web3, context, contractName, contract) {
         }
     )
 
-    let dDaiSupplyRate = (cTokenSupplyRate.mul(tester.NINE)).div(tester.TEN)
+    let dTokenSupplyRate = (cTokenSupplyRate.mul(tester.NINE)).div(tester.TEN)
     await tester.runTest(
         `${contractName} supply rate starts at 90% of cDai supply rate`,
         DToken,
@@ -97,7 +136,7 @@ async function runAllTests(web3, context, contractName, contract) {
         [],
         true,
         value => {
-            assert.strictEqual(value, dDaiSupplyRate.toString())
+            assert.strictEqual(value, dTokenSupplyRate.toString())
         }
     )
 
@@ -152,28 +191,30 @@ async function runAllTests(web3, context, contractName, contract) {
             assert.strictEqual(events.length, 1)
 
             const accrueEvent = events[0];
-            assert.strictEqual(accrueEvent.address, 'DDAI')
+            assert.strictEqual(
+                accrueEvent.address, tokenSymbols[contractName].toUpperCase()
+            )
             assert.strictEqual(accrueEvent.eventName, 'Accrue')
             dTokenExchangeRate = web3.utils.toBN(
                 accrueEvent.returnValues.dTokenExchangeRate
             )
-             cTokenExchangeRate = web3.utils.toBN(
+            cTokenExchangeRate = web3.utils.toBN(
                 accrueEvent.returnValues.cTokenExchangeRate
             )
 
-            cDaiInterest = ((
+            cTokenInterest = ((
                  cTokenExchangeRate.mul(tester.SCALING_FACTOR)
             ).div(storedCTokenExchangeRate)).sub(tester.SCALING_FACTOR)
 
-            dDaiInterest = (cDaiInterest.mul(tester.NINE)).div(tester.TEN)
+            dTokenInterest = (cTokenInterest.mul(tester.NINE)).div(tester.TEN)
 
-            calculatedDDaiExchangeRate = (storedDTokenExchangeRate.mul(
-                tester.SCALING_FACTOR.add(dDaiInterest)
+            calculatedDTokenExchangeRate = (storedDTokenExchangeRate.mul(
+                tester.SCALING_FACTOR.add(dTokenInterest)
             )).div(tester.SCALING_FACTOR)
 
             assert.strictEqual(
                 dTokenExchangeRate.toString(),
-                calculatedDDaiExchangeRate.toString()
+                calculatedDTokenExchangeRate.toString()
             )
         },
         tester.originalAddress
@@ -199,7 +240,7 @@ async function runAllTests(web3, context, contractName, contract) {
         [],
         true,
         value => {
-            dDaiSupplyRate = value
+            dTokenSupplyRate = value
         }
     )
 
@@ -211,12 +252,12 @@ async function runAllTests(web3, context, contractName, contract) {
         [],
         true,
         value => {
-            assert.strictEqual(value,  cTokenExchangeRate.toString())
+            assert.strictEqual(value, cTokenExchangeRate.toString())
         }
     )
 
     await tester.runTest(
-        `${cTokenSymbols[contractName]} supply rate is unchanged after dDai accrual (as it did not accrue)`,
+        `${cTokenSymbols[contractName]} supply rate is unchanged after ${tokenSymbols[contractName]} accrual (as it did not accrue)`,
         CToken,
         'supplyRatePerBlock',
         'call',
@@ -251,7 +292,9 @@ async function runAllTests(web3, context, contractName, contract) {
             const collectSurplusEvent = events[2];
 
             // Ensure that accrual is performed correctly
-            assert.strictEqual(accrueEvent.address, 'DDAI');
+            assert.strictEqual(
+                accrueEvent.address, tokenSymbols[contractName].toUpperCase()
+            );
             assert.strictEqual(accrueEvent.eventName, 'Accrue');
             dTokenExchangeRate = web3.utils.toBN(
                 accrueEvent.returnValues.dTokenExchangeRate
@@ -260,23 +303,25 @@ async function runAllTests(web3, context, contractName, contract) {
                 accrueEvent.returnValues.cTokenExchangeRate
             )
 
-            cDaiInterest = ((
+            cTokenInterest = ((
                  cTokenExchangeRate.mul(tester.SCALING_FACTOR)
             ).div(storedCTokenExchangeRate)).sub(tester.SCALING_FACTOR)
 
-            dDaiInterest = (cDaiInterest.mul(tester.NINE)).div(tester.TEN)
+            dTokenInterest = (cTokenInterest.mul(tester.NINE)).div(tester.TEN)
 
-            calculatedDDaiExchangeRate = (storedDTokenExchangeRate.mul(
-                tester.SCALING_FACTOR.add(dDaiInterest)
+            calculatedDTokenExchangeRate = (storedDTokenExchangeRate.mul(
+                tester.SCALING_FACTOR.add(dTokenInterest)
             )).div(tester.SCALING_FACTOR)
 
             assert.strictEqual(
                 dTokenExchangeRate.toString(),
-                calculatedDDaiExchangeRate.toString()
+                calculatedDTokenExchangeRate.toString()
             )
 
-            // Ensure that cDai transfer of 0 tokens is performed correctly
-            assert.strictEqual(transferEvent.address, 'CDAI');
+            // Ensure that cToken transfer of 0 tokens is performed correctly
+            assert.strictEqual(
+                transferEvent.address, cTokenSymbols[contractName].toUpperCase()
+            );
             assert.strictEqual(transferEvent.eventName, 'Transfer');
             assert.strictEqual(
                 transferEvent.returnValues.from, DToken.options.address
@@ -287,7 +332,10 @@ async function runAllTests(web3, context, contractName, contract) {
             assert.strictEqual(transferEvent.returnValues.value, '0')
 
             // Ensure that CollectSurplus of 0, 0 is performed correctly
-            assert.strictEqual(collectSurplusEvent.address, 'DDAI');
+            assert.strictEqual(
+                collectSurplusEvent.address,
+                tokenSymbols[contractName].toUpperCase()
+            );
             assert.strictEqual(collectSurplusEvent.eventName, 'CollectSurplus');
             assert.strictEqual(
                 collectSurplusEvent.returnValues.surplusAmount, '0'
@@ -298,79 +346,43 @@ async function runAllTests(web3, context, contractName, contract) {
         },
     )
 
-    // Get some Dai from Uniswap
-    let priceOfOneHundredDai;
+    // Get some underlying tokens from Uniswap
+    let priceOfOneHundredUnderlying;
     await tester.runTest(
-        `Get the price of 100 Dai from Uniswap`,
-        tester.UNISWAP_DAI,
+        `Get the price of 100 ${underlyingSymbols[contractName]} from Uniswap`,
+        Uniswap,
         'getEthToTokenOutputPrice',
         'call',
-        ['100000000000000000000'],
+        ['1'.padEnd(underlyingDecimals[contractName] + 3, '0')],
         true,
         value => {
-            priceOfOneHundredDai = value
+            priceOfOneHundredUnderlying = value
         },
     )
 
     await tester.runTest(
-        `Get 100 Dai from Uniswap`,
-        tester.UNISWAP_DAI,
+        `Get 100 ${underlyingSymbols[contractName]} from Uniswap`,
+        Uniswap,
         'ethToTokenSwapOutput',
         'send',
-        ['100000000000000000000', '9999999999'],
+        ['1'.padEnd(underlyingDecimals[contractName] + 3, '0'), '9999999999'],
         true,
         receipt => {},
         tester.address,
-        priceOfOneHundredDai
+        priceOfOneHundredUnderlying
     )
 
     await tester.runTest(
-        `Check that we now have 100 Dai`,
-        tester.DAI,
+        `Check that we now have 100 ${underlyingSymbols[contractName]}`,
+        Underlying,
         'balanceOf',
         'call',
         [tester.address],
         true,
         value => {
-            assert.strictEqual(value, '100000000000000000000')
-        },
-    )
-
-    // Get some USDC from Uniswap
-    let priceOfOneHundredUSDC;
-    await tester.runTest(
-        `Get the price of 100 USDC from Uniswap`,
-        tester.UNISWAP_USDC,
-        'getEthToTokenOutputPrice',
-        'call',
-        ['100000000'],
-        true,
-        value => {
-            priceOfOneHundredUSDC = value
-        },
-    )
-
-    await tester.runTest(
-        `Get 100 USDC from Uniswap`,
-        tester.UNISWAP_USDC,
-        'ethToTokenSwapOutput',
-        'send',
-        ['100000000', '9999999999'],
-        true,
-        receipt => {},
-        tester.address,
-        priceOfOneHundredUSDC
-    )
-
-    await tester.runTest(
-        `Check that we now have 100 USDC`,
-        tester.USDC,
-        'balanceOf',
-        'call',
-        [tester.address],
-        true,
-        value => {
-            assert.strictEqual(value, '100000000')
+            assert.strictEqual(
+                value, '1'.padEnd(underlyingDecimals[contractName] + 3, '0')
+            )
         },
     )
 
@@ -379,13 +391,13 @@ async function runAllTests(web3, context, contractName, contract) {
         DToken,
         'mint',
         'send',
-        ['1000000000000000000'],
+        ['1'.padEnd(underlyingDecimals[contractName] + 1, '0')],
         false
     )
 
     await tester.runTest(
-        `Dai can approve ${contractName} in order to mint dTokens`,
-        tester.DAI,
+        `${underlyingSymbols[contractName]} can approve ${contractName} in order to mint dTokens`,
+        Underlying,
         'approve',
         'send',
         [DToken.options.address, constants.FULL_APPROVAL]
@@ -399,19 +411,19 @@ async function runAllTests(web3, context, contractName, contract) {
         [],
         true,
         value => {
-            dDaiExchangeRate = web3.utils.toBN(value)    
+            dTokenExchangeRate = web3.utils.toBN(value)    
         }
     )
 
     await tester.runTest(
-        'cDai exchange rate can be retrieved',
-        tester.CDAI,
+        `${cTokenSymbols[contractName]} exchange rate can be retrieved`,
+        CToken,
         'exchangeRateCurrent',
         'call',
         [],
         true,
         value => {
-            cDaiExchangeRate = web3.utils.toBN(value)
+            cTokenExchangeRate = web3.utils.toBN(value)
         }
     )
 
@@ -427,162 +439,195 @@ async function runAllTests(web3, context, contractName, contract) {
         DToken,
         'mint',
         'send',
-        ['1000000000000000000'],
+        ['1'.padEnd(underlyingDecimals[contractName] + 1, '0')],
         true,
         receipt => {
+            const extraEvents = contractName === 'Dharma Dai' ? 7 : 0
+
             const events = tester.getEvents(receipt, contractNames)
-            assert.strictEqual(events.length, 15)
+            assert.strictEqual(events.length, 8 + extraEvents)
 
             // important events - validate in full later
-            const daiTransferInEvent = events[0]
-            const cDaiMintEvent = events[10]
-            const cDaiTransferEvent = events[11]
-            const dDaiAccrueEvent = events[12]
-            const dDaiMintEvent = events[13]
-            const dDaiTransferEvent = events[14]
+            const underlyingTransferInEvent = events[0]
+            // note: cUSDC & cDai emit transfer / mint events in opposite order
+            const cTokenMintEvent = events[3 + extraEvents]
+            const cTokenTransferEvent = events[4 + extraEvents]
+            const dTokenAccrueEvent = events[5 + extraEvents]
+            const dTokenMintEvent = events[6 + extraEvents]
+            const dTokenTransferEvent = events[7 + extraEvents]
+
+            validateCTokenInterestAccrualEvents(
+                events, 1, cTokenSymbols[contractName]
+            )
 
             // ancillary events - partial validation ok (mostly cDai-specific)
-            assert.strictEqual(events[1].address, 'MKR-VAT')
-            assert.strictEqual(events[1].returnValues.caller, 'MKR-VOW')
+            if (contractName === 'Dharma Dai') {
+                // (transfer from dDai to DSR)
+                assert.strictEqual(events[4].address, 'DAI')
+                assert.strictEqual(events[4].eventName, 'Transfer')
+                assert.strictEqual(
+                    events[4].returnValues.from, DToken.options.address
+                )
+                // to -> Dai Join
+                assert.strictEqual(
+                    events[4].returnValues.value,
+                    '1'.padEnd(underlyingDecimals[contractName] + 1, '0')
+                )
 
-            assert.strictEqual(events[2].address, 'MKR-POT')
-            assert.strictEqual(events[2].returnValues.caller, 'CDAI')
+                assert.strictEqual(events[5].address, 'MKR-VAT')
+                assert.strictEqual(events[5].returnValues.caller, 'MKR-DAI-JOIN')
 
-            assert.strictEqual(events[3].address, 'CDAI')
-            assert.strictEqual(events[3].eventName, 'AccrueInterest')
+                // (burned by DSR)
+                assert.strictEqual(events[6].address, 'DAI')
+                assert.strictEqual(events[6].eventName, 'Transfer')
+                assert.strictEqual(
+                    events[6].returnValues.to, constants.NULL_ADDRESS
+                )
+                assert.strictEqual(
+                    events[6].returnValues.value,
+                    '1'.padEnd(underlyingDecimals[contractName] + 1, '0')
+                )
 
-            // (transfer from dDai to DSR)
-            assert.strictEqual(events[4].address, 'DAI')
-            assert.strictEqual(events[4].eventName, 'Transfer')
+                assert.strictEqual(events[7].address, 'MKR-DAI-JOIN')
+                assert.strictEqual(events[7].returnValues.caller, 'CDAI')
+
+                assert.strictEqual(events[8].address, 'MKR-VAT')
+                assert.strictEqual(events[8].returnValues.caller, 'CDAI')    
+
+                assert.strictEqual(events[9].address, 'MKR-POT')
+                assert.strictEqual(events[9].returnValues.caller, 'CDAI')
+            } else {
+                // (transfer from dUSDC to cUSDC)
+                assert.strictEqual(events[2].address, 'USDC')
+                assert.strictEqual(events[2].eventName, 'Transfer')
+                assert.strictEqual(
+                    events[2].returnValues.from, DToken.options.address
+                )
+                assert.strictEqual(
+                    events[2].returnValues.to, CToken.options.address
+                )
+                assert.strictEqual(
+                    events[2].returnValues.value,
+                    '1'.padEnd(underlyingDecimals[contractName] + 1, '0')
+                )
+            }
+
+            // Validate initial transfer in to dToken of 1 underlying
             assert.strictEqual(
-                events[4].returnValues.from, DToken.options.address
+                underlyingTransferInEvent.address,
+                underlyingSymbols[contractName].toUpperCase()
+            )
+            assert.strictEqual(underlyingTransferInEvent.eventName, 'Transfer')
+            assert.strictEqual(
+                underlyingTransferInEvent.returnValues.from, tester.address
             )
             assert.strictEqual(
-                events[4].returnValues.value, '1000000000000000000'
+                underlyingTransferInEvent.returnValues.to, DToken.options.address
+            )
+            assert.strictEqual(
+                underlyingTransferInEvent.returnValues.value,
+                '1'.padEnd(underlyingDecimals[contractName] + 1, '0')
             )
 
-            assert.strictEqual(events[5].address, 'MKR-VAT')
-            assert.strictEqual(events[5].returnValues.caller, 'MKR-DAI-JOIN')
+            // Validate cToken mint to dToken
+            assert.strictEqual(
+                cTokenMintEvent.address, cTokenSymbols[contractName].toUpperCase()
+            )
+            assert.strictEqual(cTokenMintEvent.eventName, 'Mint')
+            assert.strictEqual(
+                cTokenMintEvent.returnValues.minter, DToken.options.address
+            )
+            assert.strictEqual(
+                cTokenMintEvent.returnValues.mintTokens,
+                '1'.padEnd(underlyingDecimals[contractName] + 1, '0')
+            )
+            // note: mint amount is checked after parsing dToken accrual event
 
-            // (burned by DSR)
-            assert.strictEqual(events[6].address, 'DAI')
-            assert.strictEqual(events[6].eventName, 'Transfer')
+            // Validate cToken transfer to dToken
             assert.strictEqual(
-                events[6].returnValues.to, constants.NULL_ADDRESS
+                cTokenTransferEvent.address, cTokenSymbols[contractName].toUpperCase()
+            )
+            assert.strictEqual(cTokenTransferEvent.eventName, 'Transfer')
+            assert.strictEqual(
+                cTokenTransferEvent.returnValues.from, CToken.options.address
             )
             assert.strictEqual(
-                events[6].returnValues.value, '1000000000000000000'
-            )
-
-            assert.strictEqual(events[7].address, 'MKR-DAI-JOIN')
-            assert.strictEqual(events[7].returnValues.caller, 'CDAI')
-
-            assert.strictEqual(events[8].address, 'MKR-VAT')
-            assert.strictEqual(events[8].returnValues.caller, 'CDAI')    
-
-            assert.strictEqual(events[9].address, 'MKR-POT')
-            assert.strictEqual(events[9].returnValues.caller, 'CDAI')
-
-            // Validate initial transfer in to dDai of 1 Dai
-            assert.strictEqual(daiTransferInEvent.address, 'DAI')
-            assert.strictEqual(daiTransferInEvent.eventName, 'Transfer')
-            assert.strictEqual(
-                daiTransferInEvent.returnValues.from, tester.address
+                cTokenTransferEvent.returnValues.to, DToken.options.address
             )
             assert.strictEqual(
-                daiTransferInEvent.returnValues.to, DToken.options.address
-            )
-            assert.strictEqual(
-                daiTransferInEvent.returnValues.value, '1000000000000000000'
-            )
-
-            // Validate cDai mint to dDai
-            assert.strictEqual(cDaiMintEvent.address, 'CDAI')
-            assert.strictEqual(cDaiMintEvent.eventName, 'Mint')
-            assert.strictEqual(
-                cDaiMintEvent.returnValues.minter, DToken.options.address
-            )
-            assert.strictEqual(
-                cDaiMintEvent.returnValues.mintTokens, '1000000000000000000'
-            )
-            // note: mint amount is checked after parsing dDai accrual event
-
-            // Validate cDai transfer to dDai
-            assert.strictEqual(cDaiTransferEvent.address, 'CDAI')
-            assert.strictEqual(cDaiTransferEvent.eventName, 'Transfer')
-            assert.strictEqual(
-                cDaiTransferEvent.returnValues.from, tester.CDAI.options.address
-            )
-            assert.strictEqual(
-                cDaiTransferEvent.returnValues.to, DToken.options.address
-            )
-            assert.strictEqual(
-                cDaiTransferEvent.returnValues.value,
-                cDaiMintEvent.returnValues.mintAmount
+                cTokenTransferEvent.returnValues.value,
+                cTokenMintEvent.returnValues.mintAmount
             )  
 
-            // Validate dDai accrue event
-            assert.strictEqual(dDaiAccrueEvent.address, 'DDAI')
-            assert.strictEqual(dDaiAccrueEvent.eventName, 'Accrue')
-            dDaiExchangeRate = web3.utils.toBN(
-                dDaiAccrueEvent.returnValues.dTokenExchangeRate
+            // Validate dToken accrue event
+            assert.strictEqual(
+                dTokenAccrueEvent.address, tokenSymbols[contractName].toUpperCase()
             )
-            cDaiExchangeRate = web3.utils.toBN(
-                dDaiAccrueEvent.returnValues.cTokenExchangeRate
+            assert.strictEqual(dTokenAccrueEvent.eventName, 'Accrue')
+            dTokenExchangeRate = web3.utils.toBN(
+                dTokenAccrueEvent.returnValues.dTokenExchangeRate
+            )
+            cTokenExchangeRate = web3.utils.toBN(
+                dTokenAccrueEvent.returnValues.cTokenExchangeRate
             )
 
-            cDaiInterest = ((
-                cDaiExchangeRate.mul(tester.SCALING_FACTOR)
+            cTokenInterest = ((
+                cTokenExchangeRate.mul(tester.SCALING_FACTOR)
             ).div(storedCTokenExchangeRate)).sub(tester.SCALING_FACTOR)
 
-            dDaiInterest = (cDaiInterest.mul(tester.NINE)).div(tester.TEN)
+            dTokenInterest = (cTokenInterest.mul(tester.NINE)).div(tester.TEN)
 
-            calculatedDDaiExchangeRate = (storedDTokenExchangeRate.mul(
-                tester.SCALING_FACTOR.add(dDaiInterest)
+            calculatedDTokenExchangeRate = (storedDTokenExchangeRate.mul(
+                tester.SCALING_FACTOR.add(dTokenInterest)
             )).div(tester.SCALING_FACTOR)
 
             assert.strictEqual(
-                dDaiExchangeRate.toString(),
-                calculatedDDaiExchangeRate.toString()
+                dTokenExchangeRate.toString(),
+                calculatedDTokenExchangeRate.toString()
             )
 
             assert.strictEqual(
-                cDaiMintEvent.returnValues.mintAmount,
+                cTokenMintEvent.returnValues.mintAmount,
                 (web3.utils.toBN(
-                    cDaiMintEvent.returnValues.mintTokens
-                ).mul(tester.SCALING_FACTOR)).div(cDaiExchangeRate).toString()
+                    cTokenMintEvent.returnValues.mintTokens
+                ).mul(tester.SCALING_FACTOR)).div(cTokenExchangeRate).toString()
             )
 
-            // Validate dDai mint to caller
-            assert.strictEqual(dDaiMintEvent.address, 'DDAI')
-            assert.strictEqual(dDaiMintEvent.eventName, 'Mint')
+            // Validate dToken mint to caller
             assert.strictEqual(
-                dDaiMintEvent.returnValues.minter, tester.address
+                dTokenMintEvent.address, tokenSymbols[contractName].toUpperCase()
+            )
+            assert.strictEqual(dTokenMintEvent.eventName, 'Mint')
+            assert.strictEqual(
+                dTokenMintEvent.returnValues.minter, tester.address
             )
             assert.strictEqual(
-                dDaiMintEvent.returnValues.mintTokens,
-                cDaiMintEvent.returnValues.mintTokens
+                dTokenMintEvent.returnValues.mintTokens,
+                cTokenMintEvent.returnValues.mintTokens
             )
 
             assert.strictEqual(
-                dDaiMintEvent.returnValues.mintAmount,
+                dTokenMintEvent.returnValues.mintAmount,
                 (web3.utils.toBN(
-                    dDaiMintEvent.returnValues.mintTokens
-                ).mul(tester.SCALING_FACTOR)).div(dDaiExchangeRate).toString()                
+                    dTokenMintEvent.returnValues.mintTokens
+                ).mul(tester.SCALING_FACTOR)).div(dTokenExchangeRate).toString()                
             )
 
-            // Validate dDai transfer to caller
-            assert.strictEqual(dDaiTransferEvent.address, 'DDAI')
-            assert.strictEqual(dDaiTransferEvent.eventName, 'Transfer')
+            // Validate dToken transfer to caller
             assert.strictEqual(
-                dDaiTransferEvent.returnValues.from, constants.NULL_ADDRESS
+                dTokenTransferEvent.address,
+                tokenSymbols[contractName].toUpperCase()
+            )
+            assert.strictEqual(dTokenTransferEvent.eventName, 'Transfer')
+            assert.strictEqual(
+                dTokenTransferEvent.returnValues.from, constants.NULL_ADDRESS
             )
             assert.strictEqual(
-                dDaiTransferEvent.returnValues.to, tester.address
+                dTokenTransferEvent.returnValues.to, tester.address
             )
             assert.strictEqual(
-                dDaiTransferEvent.returnValues.value,
-                dDaiMintEvent.returnValues.mintAmount
+                dTokenTransferEvent.returnValues.value,
+                dTokenMintEvent.returnValues.mintAmount
             )
         }
     )
@@ -595,25 +640,25 @@ async function runAllTests(web3, context, contractName, contract) {
         [],
         true,
         value => {
-            assert.strictEqual(value, dDaiExchangeRate.toString())
+            assert.strictEqual(value, dTokenExchangeRate.toString())
         }
     )
 
     await tester.runTest(
-        'cDai exchange rate is updated correctly',
-        tester.CDAI,
+        `${cTokenSymbols[contractName]} exchange rate is updated correctly`,
+        CToken,
         'exchangeRateCurrent',
         'call',
         [],
         true,
         value => {
-            assert.strictEqual(value, cDaiExchangeRate.toString())
+            assert.strictEqual(value, cTokenExchangeRate.toString())
         }
     )
 
     console.log(
         `completed ${tester.passed + tester.failed} test${tester.passed + tester.failed === 1 ? '' : 's'} ` +
-        `with ${tester.failed} failure${tester.failed === 1 ? '' : 's'}.`
+        `on the ${tokenSymbols[contractName]} contract with ${tester.failed} failure${tester.failed === 1 ? '' : 's'}.`
     );
 
     await longer();

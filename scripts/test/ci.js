@@ -21,7 +21,7 @@ async function runTests() {
 	await deployMockExternal.test(web3Provider, context);
 
     await runAllTests(web3Provider, context, DharmaTokenNames.DharmaDai);
-    // await runAllTests(web3Provider, context, DharmaTokenNames.DharmaUSDC);
+    await runAllTests(web3Provider, context, DharmaTokenNames.DharmaUSDC);
 
 	process.exit(0)
 }

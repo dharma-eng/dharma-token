@@ -4,7 +4,7 @@ import "@openzeppelin/contracts/math/SafeMath.sol";
 import "../../interfaces/CTokenInterface.sol";
 import "../../interfaces/DTokenInterface.sol";
 import "../../interfaces/ERC20Interface.sol";
-import "../../interfaces/InterestRateModelInterface.sol";
+import "../../interfaces/CDaiInterestRateModelInterface.sol";
 import "../../interfaces/PotInterface.sol";
 
 
@@ -28,7 +28,6 @@ contract DharmaDai is ERC20Interface, DTokenInterface {
   uint256 internal constant _SCALING_FACTOR = 1e18;
   uint256 internal constant _HALF_OF_SCALING_FACTOR = 5e17;
   uint256 internal constant _RAY = 1e27;
-  uint256 internal constant _NINETY_PERCENT = 9e17;
   uint256 internal constant _COMPOUND_SUCCESS = 0;
 
   CTokenInterface internal constant _CDAI = CTokenInterface(
@@ -661,7 +660,7 @@ contract DharmaDai is ERC20Interface, DTokenInterface {
     ).mul(_POT.pie(address(_CDAI))) / _RAY;
 
     // Get the latest interest rate model from the cDai contract.
-    InterestRateModelInterface interestRateModel = InterestRateModelInterface(
+    CDaiInterestRateModelInterface interestRateModel = CDaiInterestRateModelInterface(
       _CDAI.interestRateModel()
     );
 

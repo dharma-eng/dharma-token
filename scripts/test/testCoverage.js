@@ -15,11 +15,20 @@ async function runTests(contract, contractName) {
 
 // "use mocha" ;)
 const DharmaDai = artifacts.require("./token/DharmaDai.sol")
+const DharmaUSDC = artifacts.require("./token/DharmaUSDC.sol")
+
 contract("DharmaDai", accounts => {
-  it("should run all tests", async () => {
+  it("should run all tests for Dharma Dai", async () => {
   	const instance = await DharmaDai.deployed()
   	await runTests(instance.contract, 'Dharma Dai')
-  	//console.log('1')
+    return instance
+  })
+})
+
+contract("DharmaUSDC", accounts => {
+  it("should run all tests for Dharma USDC", async () => {
+  	const instance = await DharmaUSDC.deployed()
+  	await runTests(instance.contract, 'Dharma USDC')
     return instance
   })
 })
