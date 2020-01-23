@@ -53,7 +53,7 @@ const validateCTokenInterestAccrualEvents = (
 }
 
 const validateDTokenAccrueEvent = (
-    parsedEvents, eventIndex, contractName, tester, storedDTokenExchangeRate, storedCTokenExchangeRate
+    parsedEvents, eventIndex, contractName, web3, tester, storedDTokenExchangeRate, storedCTokenExchangeRate
 ) => {
     const accrueEvent = parsedEvents[eventIndex];
     assert.strictEqual(
@@ -235,7 +235,7 @@ async function runAllTests(web3, context, contractName, contract) {
             assert.strictEqual(events.length, 1);
 
             [dTokenExchangeRate, cTokenExchangeRate] = validateDTokenAccrueEvent(
-                events, 0, contractName, tester, storedDTokenExchangeRate, storedCTokenExchangeRate
+                events, 0, contractName, web3, tester, storedDTokenExchangeRate, storedCTokenExchangeRate
             );
         },
         tester.originalAddress
@@ -310,7 +310,7 @@ async function runAllTests(web3, context, contractName, contract) {
 
             // Ensure that accrual is performed correctly
             [dTokenExchangeRate, cTokenExchangeRate] = validateDTokenAccrueEvent(
-                events, 0, contractName, tester, storedDTokenExchangeRate, storedCTokenExchangeRate
+                events, 0, contractName, web3, tester, storedDTokenExchangeRate, storedCTokenExchangeRate
             );
 
             // Ensure that cToken transfer of 0 tokens is performed correctly
@@ -463,7 +463,7 @@ async function runAllTests(web3, context, contractName, contract) {
                 const cTokenTransferEvent = events[4 + extraEvents];
                 const dTokenAccrueEvent = events[5 + extraEvents];
                 [dTokenExchangeRate, cTokenExchangeRate] = validateDTokenAccrueEvent(
-                    events, 5 + extraEvents, contractName, tester, storedDTokenExchangeRate, storedCTokenExchangeRate
+                    events, 5 + extraEvents, contractName, web3, tester, storedDTokenExchangeRate, storedCTokenExchangeRate
                 );
 
                 const dTokenMintEvent = events[6 + extraEvents]
@@ -930,7 +930,7 @@ async function runAllTests(web3, context, contractName, contract) {
                 assert.strictEqual(events.length, 2);
 
                 [dTokenExchangeRate] = validateDTokenAccrueEvent(
-                    events, 0, contractName, tester, storedDTokenExchangeRate, storedCTokenExchangeRate
+                    events, 0, contractName, web3, tester, storedDTokenExchangeRate, storedCTokenExchangeRate
                 );
 
                 const dTokentransferAmount = (initialUnderlyingAmount.mul(tester.SCALING_FACTOR)).div(dTokenExchangeRate);
