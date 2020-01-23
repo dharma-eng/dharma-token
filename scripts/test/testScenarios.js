@@ -52,7 +52,59 @@ const validateCTokenInterestAccrualEvents = (
     }
 }
 
+const validateDTokenAccrueEvent = (
+    parsedEvents, eventIndex, contractName, tester, storedDTokenExchangeRate, storedCTokenExchangeRate
+) => {
+    const accrueEvent = parsedEvents[eventIndex];
+    assert.strictEqual(
+        accrueEvent.address, tokenSymbols[contractName].toUpperCase()
+    )
+    assert.strictEqual(accrueEvent.eventName, 'Accrue')
+    dTokenExchangeRate = web3.utils.toBN(
+        accrueEvent.returnValues.dTokenExchangeRate
+    )
+    cTokenExchangeRate = web3.utils.toBN(
+        accrueEvent.returnValues.cTokenExchangeRate
+    )
+
+    cTokenInterest = ((
+         cTokenExchangeRate.mul(tester.SCALING_FACTOR)
+    ).div(storedCTokenExchangeRate)).sub(tester.SCALING_FACTOR)
+
+    dTokenInterest = (cTokenInterest.mul(tester.NINE)).div(tester.TEN)
+
+    calculatedDTokenExchangeRate = (storedDTokenExchangeRate.mul(
+        tester.SCALING_FACTOR.add(dTokenInterest)
+    )).div(tester.SCALING_FACTOR)
+
+    assert.strictEqual(
+        dTokenExchangeRate.toString(),
+        calculatedDTokenExchangeRate.toString()
+    )
+
+    return [dTokenExchangeRate, cTokenExchangeRate]
+}
+
+const prepareToValidateAccrual = async (web3, dToken) => {
+    // dToken ExchangeRate "checkpoint" is stored at slot zero.
+    const storedDTokenExchangeRate = web3.utils.toBN(
+        await web3.eth.getStorageAt(dToken.options.address, 0)
+    )
+
+    // cToken ExchangeRate "checkpoint" is stored at slot one.
+    const storedCTokenExchangeRate = web3.utils.toBN(
+        await web3.eth.getStorageAt(dToken.options.address, 1)
+    )
+
+    const blockNumber = (await web3.eth.getBlock('latest')).number
+
+    return [storedDTokenExchangeRate, storedCTokenExchangeRate, blockNumber]
+}
+
 async function runAllTests(web3, context, contractName, contract) {
+    let storedDTokenExchangeRate;
+    let storedCTokenExchangeRate;
+    let blockNumber;
 
     const tester = new Tester(web3, context);
     await tester.init();
@@ -163,19 +215,11 @@ async function runAllTests(web3, context, contractName, contract) {
         value => {
             dTokenExchangeRate = web3.utils.toBN(value)
         }
-    )
+    );
 
-    // dToken ExchangeRate "checkpoint" is stored at slot zero.
-    let storedDTokenExchangeRate = web3.utils.toBN(
-        await web3.eth.getStorageAt(DToken.options.address, 0)
-    )
-
-    // cToken ExchangeRate "checkpoint" is stored at slot one.
-    let storedCTokenExchangeRate = web3.utils.toBN(
-        await web3.eth.getStorageAt(DToken.options.address, 1)
-    )
-
-    let blockNumber = (await web3.eth.getBlock('latest')).number
+    [
+        storedDTokenExchangeRate, storedCTokenExchangeRate, blockNumber
+    ] = await prepareToValidateAccrual(web3, DToken)
 
     await tester.runTest(
         `${contractName} accrueInterest can be triggered correctly from any account`,
@@ -188,34 +232,11 @@ async function runAllTests(web3, context, contractName, contract) {
             assert.strictEqual(receipt.blockNumber, blockNumber + 1)
             const events = tester.getEvents(receipt, contractNames)
 
-            assert.strictEqual(events.length, 1)
+            assert.strictEqual(events.length, 1);
 
-            const accrueEvent = events[0];
-            assert.strictEqual(
-                accrueEvent.address, tokenSymbols[contractName].toUpperCase()
-            )
-            assert.strictEqual(accrueEvent.eventName, 'Accrue')
-            dTokenExchangeRate = web3.utils.toBN(
-                accrueEvent.returnValues.dTokenExchangeRate
-            )
-            cTokenExchangeRate = web3.utils.toBN(
-                accrueEvent.returnValues.cTokenExchangeRate
-            )
-
-            cTokenInterest = ((
-                 cTokenExchangeRate.mul(tester.SCALING_FACTOR)
-            ).div(storedCTokenExchangeRate)).sub(tester.SCALING_FACTOR)
-
-            dTokenInterest = (cTokenInterest.mul(tester.NINE)).div(tester.TEN)
-
-            calculatedDTokenExchangeRate = (storedDTokenExchangeRate.mul(
-                tester.SCALING_FACTOR.add(dTokenInterest)
-            )).div(tester.SCALING_FACTOR)
-
-            assert.strictEqual(
-                dTokenExchangeRate.toString(),
-                calculatedDTokenExchangeRate.toString()
-            )
+            [dTokenExchangeRate, cTokenExchangeRate] = validateDTokenAccrueEvent(
+                events, 0, contractName, tester, storedDTokenExchangeRate, storedCTokenExchangeRate
+            );
         },
         tester.originalAddress
     )
@@ -266,14 +287,11 @@ async function runAllTests(web3, context, contractName, contract) {
         value => {
             assert.strictEqual(value, cTokenSupplyRate.toString())
         }
-    )
+    );
 
-    storedDTokenExchangeRate = web3.utils.toBN(
-        await web3.eth.getStorageAt(DToken.options.address, 0)
-    )
-    storedCTokenExchangeRate = web3.utils.toBN(
-        await web3.eth.getStorageAt(DToken.options.address, 1)
-    )
+    [
+        storedDTokenExchangeRate, storedCTokenExchangeRate, blockNumber
+    ] = await prepareToValidateAccrual(web3, DToken)
 
     await tester.runTest(
         `${contractName} can pull surplus of 0 before any tokens are minted`,
@@ -287,36 +305,13 @@ async function runAllTests(web3, context, contractName, contract) {
 
             assert.strictEqual(events.length, 3);
 
-            const accrueEvent = events[0];
             const transferEvent = events[1];
             const collectSurplusEvent = events[2];
 
             // Ensure that accrual is performed correctly
-            assert.strictEqual(
-                accrueEvent.address, tokenSymbols[contractName].toUpperCase()
+            [dTokenExchangeRate, cTokenExchangeRate] = validateDTokenAccrueEvent(
+                events, 0, contractName, tester, storedDTokenExchangeRate, storedCTokenExchangeRate
             );
-            assert.strictEqual(accrueEvent.eventName, 'Accrue');
-            dTokenExchangeRate = web3.utils.toBN(
-                accrueEvent.returnValues.dTokenExchangeRate
-            )
-             cTokenExchangeRate = web3.utils.toBN(
-                accrueEvent.returnValues.cTokenExchangeRate
-            )
-
-            cTokenInterest = ((
-                 cTokenExchangeRate.mul(tester.SCALING_FACTOR)
-            ).div(storedCTokenExchangeRate)).sub(tester.SCALING_FACTOR)
-
-            dTokenInterest = (cTokenInterest.mul(tester.NINE)).div(tester.TEN)
-
-            calculatedDTokenExchangeRate = (storedDTokenExchangeRate.mul(
-                tester.SCALING_FACTOR.add(dTokenInterest)
-            )).div(tester.SCALING_FACTOR)
-
-            assert.strictEqual(
-                dTokenExchangeRate.toString(),
-                calculatedDTokenExchangeRate.toString()
-            )
 
             // Ensure that cToken transfer of 0 tokens is performed correctly
             assert.strictEqual(
@@ -427,14 +422,6 @@ async function runAllTests(web3, context, contractName, contract) {
         }
     )
 
-    storedDTokenExchangeRate = web3.utils.toBN(
-        await web3.eth.getStorageAt(DToken.options.address, 0)
-    )
-    storedCTokenExchangeRate = web3.utils.toBN(
-        await web3.eth.getStorageAt(DToken.options.address, 1)
-    )
-
-
     async function testMint() {
         let totalDTokensMinted;
 
@@ -449,6 +436,12 @@ async function runAllTests(web3, context, contractName, contract) {
                 assert.strictEqual(value, '0')
             }
         );
+
+        [
+            storedDTokenExchangeRate,
+            storedCTokenExchangeRate,
+            blockNumber
+        ] = await prepareToValidateAccrual(web3, DToken);
 
         await tester.runTest(
             `${contractName} can mint dTokens`,
@@ -467,8 +460,12 @@ async function runAllTests(web3, context, contractName, contract) {
                 const underlyingTransferInEvent = events[0]
                 // note: cUSDC & cDai emit transfer / mint events in opposite order
                 const cTokenMintEvent = events[3 + extraEvents]
-                const cTokenTransferEvent = events[4 + extraEvents]
-                const dTokenAccrueEvent = events[5 + extraEvents]
+                const cTokenTransferEvent = events[4 + extraEvents];
+                const dTokenAccrueEvent = events[5 + extraEvents];
+                [dTokenExchangeRate, cTokenExchangeRate] = validateDTokenAccrueEvent(
+                    events, 5 + extraEvents, contractName, tester, storedDTokenExchangeRate, storedCTokenExchangeRate
+                );
+
                 const dTokenMintEvent = events[6 + extraEvents]
                 const dTokenTransferEvent = events[7 + extraEvents]
 
@@ -685,7 +682,6 @@ async function runAllTests(web3, context, contractName, contract) {
                 assert.strictEqual(value, totalDTokensMinted)
             }
         )
-
     }
 
     async function testTransfer() {
@@ -882,7 +878,6 @@ async function runAllTests(web3, context, contractName, contract) {
         const snapshot = await tester.takeSnapshot();
         const { result: snapshotId } = snapshot;
 
-
         let balance;
         await tester.runTest(
             `Get total ${tokenSymbols[contractName]} balance for transfer`,
@@ -896,11 +891,15 @@ async function runAllTests(web3, context, contractName, contract) {
             },
         );
 
-        const storedDTokenExchangeRate = web3.utils.toBN(
-            await web3.eth.getStorageAt(DToken.options.address, 0)
-        );
+        [
+            storedDTokenExchangeRate,
+            storedCTokenExchangeRate,
+            blockNumber
+        ] = await prepareToValidateAccrual(web3, DToken);
 
-        const expectedUnderlyingAmount = (balance.mul(storedDTokenExchangeRate)).div(tester.SCALING_FACTOR);
+        const expectedUnderlyingAmount = (
+            balance.mul(storedDTokenExchangeRate)
+        ).div(tester.SCALING_FACTOR);
 
         let initialUnderlyingAmount;
         await tester.runTest(
@@ -930,16 +929,8 @@ async function runAllTests(web3, context, contractName, contract) {
 
                 assert.strictEqual(events.length, 2);
 
-                const accrueEvent = events[0];
-
-                assert.strictEqual(
-                    accrueEvent.address,
-                    tokenSymbols[contractName].toUpperCase()
-                );
-                assert.strictEqual(accrueEvent.eventName, 'Accrue');
-
-                dTokenExchangeRate = web3.utils.toBN(
-                    accrueEvent.returnValues.dTokenExchangeRate
+                [dTokenExchangeRate] = validateDTokenAccrueEvent(
+                    events, 0, contractName, tester, storedDTokenExchangeRate, storedCTokenExchangeRate
                 );
 
                 const dTokentransferAmount = (initialUnderlyingAmount.mul(tester.SCALING_FACTOR)).div(dTokenExchangeRate);
@@ -1125,7 +1116,6 @@ async function runAllTests(web3, context, contractName, contract) {
 
         await tester.revertToSnapShot(snapshotId);
     }
-
 
     await testMint();
     await testTransfer();
