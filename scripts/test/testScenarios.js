@@ -129,7 +129,7 @@ async function runAllTests(web3, context, contractName, contract) {
 
     let dTokenSupplyRate = (cTokenSupplyRate.mul(tester.NINE)).div(tester.TEN)
     await tester.runTest(
-        `${contractName} supply rate starts at 90% of cDai supply rate`,
+        `${contractName} supply rate starts at 90% of ${cTokenSymbols[contractName]} supply rate`,
         DToken,
         'supplyRatePerBlock',
         'call',
@@ -436,6 +436,20 @@ async function runAllTests(web3, context, contractName, contract) {
 
 
     async function testMint() {
+        let totalDTokensMinted;
+
+        await tester.runTest(
+            `${cTokenSymbols[contractName]} total supply is 0 before mint`,
+            CToken,
+            'totalSupply',
+            'call',
+            [],
+            true,
+            value => {
+                assert.strictEqual(value, '0')
+            }
+        );
+
         await tester.runTest(
             `${contractName} can mint dTokens`,
             DToken,
@@ -657,6 +671,19 @@ async function runAllTests(web3, context, contractName, contract) {
                 assert.strictEqual(value, cTokenExchangeRate.toString())
             }
         )
+
+        await tester.runTest(
+            `${cTokenSymbols[contractName]} total supply is correct after mint`,
+            CToken,
+            'totalSupply',
+            'call',
+            [],
+            true,
+            value => {
+                assert.strictEqual(value, totalDTokensMinted)
+            }
+        )
+
     }
 
     async function testTransfer() {
@@ -834,6 +861,18 @@ async function runAllTests(web3, context, contractName, contract) {
             },
         )
 
+        await tester.runTest(
+            `Check transfer recipient has correct allowance`,
+            DToken,
+            'allowance',
+            'call',
+            [tester.address, tester.addressTwo],
+            true,
+            value => {
+                assert.strictEqual(value, '0');
+            },
+        )
+
         await tester.revertToSnapShot(snapshotId);
     }
 
@@ -901,20 +940,20 @@ async function runAllTests(web3, context, contractName, contract) {
                     accrueEvent.returnValues.dTokenExchangeRate
                 );
 
-                const dDaitransferAmount = (initialUnderlyingAmount.mul(tester.SCALING_FACTOR)).div(dTokenExchangeRate);
+                const dTokentransferAmount = (initialUnderlyingAmount.mul(tester.SCALING_FACTOR)).div(dTokenExchangeRate);
 
                 const tokenTransferEvent = events[1];
                 assert.strictEqual(
                     tokenTransferEvent.address,
                     tokenSymbols[contractName].toUpperCase()
-                )
+                );
                 assert.strictEqual(tokenTransferEvent.eventName, 'Transfer');
 
                 const { returnValues: transferReturnValues } = tokenTransferEvent;
 
                 assert.strictEqual(transferReturnValues.from, tester.address);
                 assert.strictEqual(transferReturnValues.to, tester.addressTwo);
-                assert.strictEqual(transferReturnValues.value, dDaitransferAmount.toString());
+                assert.strictEqual(transferReturnValues.value, dTokentransferAmount.toString());
             }
         );
 
@@ -944,7 +983,21 @@ async function runAllTests(web3, context, contractName, contract) {
                 assert.strictEqual(value, underlyingAmountTransfered.toString());
             },
         );
-
+        //
+        // await tester.runTest(
+        //     `${contractName} exchange rate can be retrieved`,
+        //     DToken,
+        //     'exchangeRateCurrent',
+        //     'call',
+        //     [],
+        //     true,
+        //     value => {
+        //         dTokenExchangeRate = web3.utils.toBN(value)
+        //     }
+        // );
+        //
+        // const leftOverUnderlying = initialUnderlyingAmount.sub(underlyingAmountTransfered);
+        //
         // await tester.runTest(
         //     `Check transfer sender has correct balance`,
         //     DToken,
@@ -953,10 +1006,11 @@ async function runAllTests(web3, context, contractName, contract) {
         //     [tester.address],
         //     true,
         //     value => {
-        //         assert.strictEqual(value, '0');
+        //         console.log({value});
+        //         assert.strictEqual(value, leftOverUnderlying.toString());
         //     },
         // );
-
+        //
         await tester.revertToSnapShot(snapshotId);
     }
 
