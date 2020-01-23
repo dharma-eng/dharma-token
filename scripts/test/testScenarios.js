@@ -439,8 +439,8 @@ async function runAllTests(web3, context, contractName, contract) {
         let totalDTokensMinted;
 
         await tester.runTest(
-            `${cTokenSymbols[contractName]} total supply is 0 before mint`,
-            CToken,
+            `${tokenSymbols[contractName]} total supply is 0 before mint`,
+            DToken,
             'totalSupply',
             'call',
             [],
@@ -463,7 +463,7 @@ async function runAllTests(web3, context, contractName, contract) {
                 const events = tester.getEvents(receipt, contractNames)
                 assert.strictEqual(events.length, 8 + extraEvents)
 
-                // important events - validate in full later
+                // important events - validate in full after the ancillary ones
                 const underlyingTransferInEvent = events[0]
                 // note: cUSDC & cDai emit transfer / mint events in opposite order
                 const cTokenMintEvent = events[3 + extraEvents]
@@ -629,6 +629,8 @@ async function runAllTests(web3, context, contractName, contract) {
                     ).mul(tester.SCALING_FACTOR)).div(dTokenExchangeRate).toString()
                 )
 
+                totalDTokensMinted = dTokenMintEvent.returnValues.mintAmount
+
                 // Validate dToken transfer to caller
                 assert.strictEqual(
                     dTokenTransferEvent.address,
@@ -673,8 +675,8 @@ async function runAllTests(web3, context, contractName, contract) {
         )
 
         await tester.runTest(
-            `${cTokenSymbols[contractName]} total supply is correct after mint`,
-            CToken,
+            `${tokenSymbols[contractName]} total supply is correct after mint`,
+            DToken,
             'totalSupply',
             'call',
             [],
