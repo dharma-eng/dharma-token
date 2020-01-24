@@ -960,8 +960,6 @@ async function runAllTests(web3, context, contractName, contract) {
 
                 const events = tester.getEvents(receipt, contractNames);
 
-                console.log(JSON.stringify(events, null, 2));
-
                 assert.strictEqual(events.length, 8 + extraEvents);
 
                 validateCTokenInterestAccrualEvents(
