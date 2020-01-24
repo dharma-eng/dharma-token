@@ -192,6 +192,19 @@ async function runAllTests(web3, context, contractName, contract) {
         }
     )
 
+    let dTokenSpreadPerBlock = (cTokenSupplyRate.mul(tester.ONE)).div(tester.TEN)
+    await tester.runTest(
+        `${contractName} spread per block is 10% of ${cTokenSymbols[contractName]} supply rate per block`,
+        DToken,
+        'getSpreadPerBlock',
+        'call',
+        [],
+        true,
+        value => {
+            assert.strictEqual(value, dTokenSpreadPerBlock.toString())
+        }
+    )
+
     let cTokenExchangeRate;
     await tester.runTest(
         `${cTokenSymbols[contractName]} exchange rate can be retrieved`,
