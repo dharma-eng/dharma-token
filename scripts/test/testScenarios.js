@@ -1064,15 +1064,32 @@ async function runAllTests(web3, context, contractName, contract) {
             },
         );
 
+        await tester.runTest(
+            `${contractName} exchange rate can be retrieved`,
+            DToken,
+            'exchangeRateCurrent',
+            'call',
+            [],
+            true,
+            value => {
+                dTokenExchangeRate = web3.utils.toBN(value)
+            }
+        );
+
+        assert.strictEqual(
+            transferUnderlyingAmount.toString(),
+            (
+                balanceAmount.mul(dTokenExchangeRate)
+            ).div(tester.SCALING_FACTOR).toString()
+        );
+
         [
             storedDTokenExchangeRate,
             storedCTokenExchangeRate,
             blockNumber
         ] = await prepareToValidateAccrual(web3, DToken);
 
-        const dTokenAllowance = (
-            transferUnderlyingAmount.mul(storedDTokenExchangeRate)
-        ).div(tester.SCALING_FACTOR);
+        const dTokenAllowance = balanceAmount;
 
         await tester.runTest(
             `${contractName} can increase dTokens allowance`,
@@ -1160,17 +1177,19 @@ async function runAllTests(web3, context, contractName, contract) {
         );
 
 
-        // await tester.runTest(
-        //     `Check transfer sender sent correct amount`,
-        //     DToken,
-        //     'balanceOf',
-        //     'call',
-        //     [tester.address],
-        //     true,
-        //     value => {
-        //         assert.strictEqual(value, "");
-        //     },
-        // );
+        /*
+        await tester.runTest(
+            `Transfer cleared the account`,
+            DToken,
+            'balanceOf',
+            'call',
+            [tester.address],
+            true,
+            value => {
+                assert.strictEqual(value, "0");
+            },
+        );
+        */
 
         await tester.runTest(
             `Check transfer recipient received correct amount`,
@@ -1268,7 +1287,7 @@ async function runAllTests(web3, context, contractName, contract) {
         );
 
         await tester.runTest(
-            `${contractName} can increase dTokens allowance`,
+            `${contractName} can decrease dTokens allowance`,
             DToken,
             'decreaseAllowance',
             'send',
