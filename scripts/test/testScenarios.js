@@ -983,6 +983,32 @@ async function runAllTests(web3, context, contractName, contract) {
                 [dTokenExchangeRate, cTokenExchangeRate] = validateDTokenAccrueEvent(
                     events, 0, contractName, web3, tester, storedDTokenExchangeRate, storedCTokenExchangeRate
                 );
+
+                const dTokenTransferEvent = events[1];
+
+                // Validate cToken transfer
+                assert.strictEqual(
+                    dTokenTransferEvent.address,
+                    tokenSymbols[contractName].toUpperCase()
+                );
+                assert.strictEqual(dTokenTransferEvent.eventName, 'Transfer');
+
+                const { returnValues: cTokenTransferReturnValues } = dTokenTransferEvent;
+
+                const dTokenToBurn = tokensToReceive.mul(tester.SCALING_FACTOR).div(dTokenExchangeRate);
+
+                assert.strictEqual(
+                    cTokenTransferReturnValues.from, tester.address
+                );
+                assert.strictEqual(
+                    cTokenTransferReturnValues.to, constants.NULL_ADDRESS
+                );
+                assert.strictEqual(
+                    cTokenTransferReturnValues.value,
+                    dTokenToBurn.toString()
+                );
+
+                // TODO: More validation
             }
         );
 
