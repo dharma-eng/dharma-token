@@ -726,6 +726,120 @@ async function runAllTests(web3, context, contractName, contract) {
         )
     }
 
+    async function testRedeem() {
+        const snapshot = await tester.takeSnapshot();
+        const { result: snapshotId } = snapshot;
+
+        let currentTotalDTokens;
+        let currentDTokenAccountBalance;
+
+        await tester.runTest(
+            `${tokenSymbols[contractName]} total supply can be retrieved prior to redeeming`,
+            DToken,
+            'totalSupply',
+            'call',
+            [],
+            true,
+            value => {
+                currentTotalDTokens = web3.utils.toBN(value)
+            }
+        );
+
+        await tester.runTest(
+            `${tokenSymbols[contractName]} account balance can be retrieved prior to redeeming`,
+            DToken,
+            'balanceOf',
+            'call',
+            [tester.address],
+            true,
+            value => {
+                currentDTokenAccountBalance = web3.utils.toBN(value)
+            }
+        );
+
+
+        [
+            storedDTokenExchangeRate,
+            storedCTokenExchangeRate,
+            blockNumber
+        ] = await prepareToValidateAccrual(web3, DToken);
+
+        const dTokensToBurn = currentDTokenAccountBalance.div(web3.utils.toBN('2'));
+
+        let dTokenExchangeRate;
+        let cTokenExchangeRate;
+        let dTokenToBurn;
+        let cTokenToReceive;
+        await tester.runTest(
+            `${contractName} can redeem dTokens for underlying`,
+            DToken,
+            'redeem',
+            'send',
+            [dTokensToBurn.toString()],
+            true,
+            receipt => {
+                const extraEvents = contractName === 'Dharma Dai' ? 6 : 0
+
+                const events = tester.getEvents(receipt, contractNames);
+
+                console.log(JSON.stringify(events, null, 2));
+
+                assert.strictEqual(events.length, 8 + extraEvents);
+
+                [dTokenExchangeRate, cTokenExchangeRate] = validateDTokenAccrueEvent(
+                    events, 0, contractName, web3, tester, storedDTokenExchangeRate, storedCTokenExchangeRate
+                );
+
+                const dTokenTransferEvent = events[1];
+                const dTokenRedeemEvent = events[2];
+
+                const { returnValues: dTokenTransferReturnValues } = dTokenTransferEvent;
+
+                // Validate dToken "burn" transfer to null address
+                assert.strictEqual(
+                    dTokenTransferEvent.address,
+                    tokenSymbols[contractName].toUpperCase()
+                );
+                assert.strictEqual(dTokenTransferEvent.eventName, 'Transfer');
+                assert.strictEqual(
+                    dTokenTransferReturnValues.from, tester.address
+                );
+                assert.strictEqual(
+                    dTokenTransferReturnValues.to, constants.NULL_ADDRESS
+                );
+                assert.strictEqual(
+                    dTokenTransferReturnValues.value,
+                    dTokensToBurn.toString()
+                );
+
+                const { returnValues: dTokenRedeemReturnValues } = dTokenRedeemEvent;
+
+                const underlyingEquivalent = (
+                    dTokensToBurn.mul(dTokenExchangeRate)
+                ).div(tester.SCALING_FACTOR)
+
+                // Validate dToken redeem (emits underlying equivalent tokens)
+                assert.strictEqual(
+                    dTokenRedeemEvent.address, tokenSymbols[contractName].toUpperCase()
+                );
+                assert.strictEqual(dTokenRedeemEvent.eventName, 'Redeem');
+                assert.strictEqual(
+                    dTokenRedeemReturnValues.redeemer, tester.address
+                );
+                assert.strictEqual(
+                    dTokenRedeemReturnValues.redeemTokens,
+                    underlyingEquivalent.toString()
+                );
+                assert.strictEqual(
+                    dTokenRedeemReturnValues.redeemAmount,
+                    dTokensToBurn.toString()
+                )
+
+            }
+        );
+        await tester.revertToSnapShot(snapshotId);
+    }
+
     async function testRedeemToCToken() {
         let currentTotalDTokens;
         let currentTotalUnderlying;
@@ -2088,16 +2202,17 @@ async function runAllTests(web3, context, contractName, contract) {
 
 
     await testMint();
-    await testRedeemToCToken();
-    await testRedeemUnderlyingToCToken();
-    await testMintViaCToken();
-    await testTransfer();
-    await testTransferFrom();
-    await testAllowance();
-    await testTransferUnderlying();
-    await testTransferUnderlyingFrom();
-    await testApprove();
-    await testSpreadPerBlock();
+    await testRedeem();
+    // await testRedeemToCToken();
+    // await testRedeemUnderlyingToCToken();
+    // await testMintViaCToken();
+    // await testTransfer();
+    // await testTransferFrom();
+    // await testAllowance();
+    // await testTransferUnderlying();
+    // await testTransferUnderlyingFrom();
+    // await testApprove();
+    // await testSpreadPerBlock();
 
 
     console.log(
