@@ -192,6 +192,18 @@ async function runAllTests(web3, context, contractName, contract) {
         }
     )
 
+    await tester.runTest(
+        `${cTokenSymbols[contractName]} supply rate can be retrieved`,
+        CToken,
+        'supplyRatePerBlock',
+        'call',
+        [],
+        true,
+        value => {
+            cTokenSupplyRate = web3.utils.toBN(value)
+        }
+    )
+
     let dTokenSpreadPerBlock = (cTokenSupplyRate.mul(tester.ONE)).div(tester.TEN)
     await tester.runTest(
         `${contractName} spread per block is 10% of ${cTokenSymbols[contractName]} supply rate per block`,
@@ -957,6 +969,7 @@ async function runAllTests(web3, context, contractName, contract) {
 
         let dTokenExchangeRate;
         let leftOverBalance;
+        let dTokentransferAmount;
         await tester.runTest(
             `${contractName} can transfer underlying`,
             DToken,
@@ -973,7 +986,7 @@ async function runAllTests(web3, context, contractName, contract) {
                     events, 0, contractName, web3, tester, storedDTokenExchangeRate, storedCTokenExchangeRate
                 );
 
-                const dTokentransferAmount = (initialUnderlyingAmount.mul(tester.SCALING_FACTOR)).div(dTokenExchangeRate);
+                dTokentransferAmount = (initialUnderlyingAmount.mul(tester.SCALING_FACTOR)).div(dTokenExchangeRate);
 
                 leftOverBalance = balance.sub(dTokentransferAmount)
 
