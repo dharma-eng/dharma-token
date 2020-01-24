@@ -24,7 +24,6 @@ class Tester {
         this.failed = 0;
         this.passed = 0;
         this.SCALING_FACTOR = this.web3.utils.toBN('1000000000000000000');
-        this.ONE = this.web3.utils.toBN('1');
         this.NINE = this.web3.utils.toBN('9');
         this.TEN = this.web3.utils.toBN('10');
     }
