@@ -768,7 +768,6 @@ async function runAllTests(web3, context, contractName, contract) {
 
         let dTokenExchangeRate;
         let cTokenExchangeRate;
-        let dTokenToBurn;
         let cTokenToReceive;
         await tester.runTest(
             `${contractName} can redeem dTokens for underlying`,
@@ -781,8 +780,6 @@ async function runAllTests(web3, context, contractName, contract) {
                 const extraEvents = contractName === 'Dharma Dai' ? 6 : 0
 
                 const events = tester.getEvents(receipt, contractNames);
-
-                console.log(JSON.stringify(events, null, 2));
 
                 assert.strictEqual(events.length, 8 + extraEvents);
 
@@ -833,8 +830,76 @@ async function runAllTests(web3, context, contractName, contract) {
                 assert.strictEqual(
                     dTokenRedeemReturnValues.redeemAmount,
                     dTokensToBurn.toString()
-                )
+                );
 
+                // TODO: Validate extra events
+                validateCTokenInterestAccrualEvents(
+                    events, 3, cTokenSymbols[contractName]
+                );
+
+                const cTokenTransferEvent = events[5 + extraEvents];
+                const cTokenRedeemEvent = events[6 + extraEvents];
+                const underlyingTransferEvent = events[7 + extraEvents];
+
+                const { returnValues: cTokenTransferReturnValues } = cTokenTransferEvent;
+
+                cTokenToReceive = (
+                    dTokensToBurn.mul(dTokenExchangeRate)
+                ).div(tester.SCALING_FACTOR);
+
+                // Validate cToken transfer to caller
+                assert.strictEqual(
+                    cTokenTransferEvent.address, cTokenSymbols[contractName].toUpperCase()
+                );
+                assert.strictEqual(cTokenTransferEvent.eventName, 'Transfer');
+                assert.strictEqual(
+                    cTokenTransferReturnValues.from, DToken.options.address
+                );
+                assert.strictEqual(
+                    cTokenTransferReturnValues.to, CToken.options.address
+                );
+                // assert.strictEqual(
+                //     cTokenTransferEvent.returnValues.value,
+                //     cTokenToReceive.toString()
+                // );
+
+                const { returnValues: cTokenRedeemReturnValues } = cTokenRedeemEvent;
+
+                // Validate cToken redeem
+                assert.strictEqual(
+                    cTokenRedeemEvent.address, cTokenSymbols[contractName].toUpperCase()
+                );
+                assert.strictEqual(cTokenRedeemEvent.eventName, 'Redeem');
+
+                assert.strictEqual(
+                    cTokenRedeemReturnValues.redeemer, DToken.options.address
+                );
+                assert.strictEqual(
+                    cTokenRedeemReturnValues.redeemTokens,
+                    cTokenToReceive.toString()
+                );
+                // assert.strictEqual(
+                //     cTokenRedeemReturnValues.redeemAmount,
+                //     cTokenTransferEvent.toString()
+                // );
+
+                const { returnValues: underlyingTransferReturnValues } = underlyingTransferEvent;
+
+                // Validate cToken transfer to caller
+                assert.strictEqual(
+                    underlyingTransferEvent.address, underlyingSymbols[contractName].toUpperCase()
+                );
+                assert.strictEqual(underlyingTransferEvent.eventName, 'Transfer');
+                assert.strictEqual(
+                    underlyingTransferReturnValues.from, DToken.options.address
+                );
+                assert.strictEqual(
+                    underlyingTransferReturnValues.to, tester.address
+                );
+                assert.strictEqual(
+                    underlyingTransferReturnValues.value,
+                    cTokenToReceive.toString()
+                );
             }
         );
         await tester.revertToSnapShot(snapshotId);
@@ -979,6 +1044,7 @@ async function runAllTests(web3, context, contractName, contract) {
                     cTokenTransferEvent.returnValues.value,
                     cTokenEquivalent.toString()
                 )
+
             }
         )
 
