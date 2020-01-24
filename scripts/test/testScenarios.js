@@ -2439,6 +2439,54 @@ async function runAllTests(web3, context, contractName, contract) {
 
     }
 
+    async function testBlockAccrual() {
+        const snapshot = await tester.takeSnapshot();
+        const { result: snapshotId } = snapshot;
+
+        const currentBlockNumber = (await web3.eth.getBlock('latest')).number;
+
+        let currentDTokenAccountBalance;
+
+        await tester.runTest(
+            `${tokenSymbols[contractName]} account balance can be retrieved prior to redeeming`,
+            DToken,
+            'balanceOf',
+            'call',
+            [tester.address],
+            true,
+            value => {
+                currentDTokenAccountBalance = web3.utils.toBN(value)
+            }
+        );
+
+        const dTokensToBurn = currentDTokenAccountBalance.div(web3.utils.toBN('2'));
+
+        await tester.runTest(
+            `${contractName} redeem to trigger accrual`,
+            DToken,
+            'redeem',
+            'send',
+            [dTokensToBurn.toString()],
+            true,
+        );
+
+        const accrualBlock = currentBlockNumber + 1;
+
+        await tester.runTest(
+            `${contractName} accrualBlockNumber is set correctly`,
+            DToken,
+            'accrualBlockNumber',
+            'call',
+            [],
+            true,
+            value => {
+               assert.strictEqual(value, accrualBlock.toString());
+            }
+        );
+
+        await tester.revertToSnapShot(snapshotId);
+    }
+
 
     await testMint();
     await testRedeem();
@@ -2454,6 +2502,7 @@ async function runAllTests(web3, context, contractName, contract) {
     await testApprove();
     await testSpreadPerBlock();
     await testRequireNonNull();
+    await testBlockAccrual();
 
 
     console.log(
