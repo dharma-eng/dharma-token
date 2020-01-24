@@ -904,7 +904,7 @@ async function runAllTests(web3, context, contractName, contract) {
                 );
 
                 const underlyingTransferEvent = events[extraEvents];
-                
+
                 const { returnValues: underlyingTransferReturnValues } = underlyingTransferEvent;
 
                 // Validate dToken "burn" transfer to null address
@@ -2290,18 +2290,18 @@ async function runAllTests(web3, context, contractName, contract) {
 
 
     await testMint();
-    // await testRedeem();
+    await testRedeem();
     await testRedeemUnderlying();
-    // await testRedeemToCToken();
-    // await testRedeemUnderlyingToCToken();
-    // await testMintViaCToken();
-    // await testTransfer();
-    // await testTransferFrom();
-    // await testAllowance();
-    // await testTransferUnderlying();
-    // await testTransferUnderlyingFrom();
-    // await testApprove();
-    // await testSpreadPerBlock();
+    await testRedeemToCToken();
+    await testRedeemUnderlyingToCToken();
+    await testMintViaCToken();
+    await testTransfer();
+    await testTransferFrom();
+    await testAllowance();
+    await testTransferUnderlying();
+    await testTransferUnderlyingFrom();
+    await testApprove();
+    await testSpreadPerBlock();
 
 
     console.log(
