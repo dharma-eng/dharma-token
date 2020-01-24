@@ -726,6 +726,71 @@ async function runAllTests(web3, context, contractName, contract) {
         )
     }
 
+    async function testRedeem() {
+        const snapshot = await tester.takeSnapshot();
+        const { result: snapshotId } = snapshot;
+
+        let currentTotalDTokens;
+        let currentDTokenAccountBalance;
+
+        await tester.runTest(
+            `${tokenSymbols[contractName]} total supply can be retrieved prior to redeeming`,
+            DToken,
+            'totalSupply',
+            'call',
+            [],
+            true,
+            value => {
+                currentTotalDTokens = web3.utils.toBN(value)
+            }
+        );
+
+        await tester.runTest(
+            `${tokenSymbols[contractName]} account balance can be retrieved prior to redeeming`,
+            DToken,
+            'balanceOf',
+            'call',
+            [tester.address],
+            true,
+            value => {
+                currentDTokenAccountBalance = web3.utils.toBN(value)
+            }
+        );
+
+
+        [
+            storedDTokenExchangeRate,
+            storedCTokenExchangeRate,
+            blockNumber
+        ] = await prepareToValidateAccrual(web3, DToken);
+
+        const dTokensToBurn = currentDTokenAccountBalance.div(web3.utils.toBN('2'));
+
+        let dTokenExchangeRate;
+        let cTokenExchangeRate;
+        let dTokenToBurn;
+        let cTokenToReceive;
+        await tester.runTest(
+            `${contractName} can redeem dTokens for underlying`,
+            DToken,
+            'redeem',
+            'send',
+            [dTokensToBurn.toString()],
+            true,
+            receipt => {
+                const events = tester.getEvents(receipt, contractNames);
+
+                assert.strictEqual(events.length, 0);
+
+                [dTokenExchangeRate, cTokenExchangeRate] = validateDTokenAccrueEvent(
+                    events, 0, contractName, web3, tester, storedDTokenExchangeRate, storedCTokenExchangeRate
+                );
+
+            }
+        );
+        await tester.revertToSnapShot(snapshotId);
+    }
+
     async function testRedeemToCToken() {
         let currentTotalDTokens;
         let currentTotalUnderlying;
@@ -2088,16 +2153,17 @@ async function runAllTests(web3, context, contractName, contract) {
 
 
     await testMint();
-    await testRedeemToCToken();
-    await testRedeemUnderlyingToCToken();
-    await testMintViaCToken();
-    await testTransfer();
-    await testTransferFrom();
-    await testAllowance();
-    await testTransferUnderlying();
-    await testTransferUnderlyingFrom();
-    await testApprove();
-    await testSpreadPerBlock();
+    await testRedeem();
+    // await testRedeemToCToken();
+    // await testRedeemUnderlyingToCToken();
+    // await testMintViaCToken();
+    // await testTransfer();
+    // await testTransferFrom();
+    // await testAllowance();
+    // await testTransferUnderlying();
+    // await testTransferUnderlyingFrom();
+    // await testApprove();
+    // await testSpreadPerBlock();
 
 
     console.log(
