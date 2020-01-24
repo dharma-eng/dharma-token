@@ -781,8 +781,6 @@ async function runAllTests(web3, context, contractName, contract) {
 
                 const events = tester.getEvents(receipt, contractNames);
 
-                console.log(JSON.stringify(events, null, 2));
-
                 assert.strictEqual(events.length, 8 + extraEvents);
 
                 [dTokenExchangeRate, cTokenExchangeRate] = validateDTokenAccrueEvent(
@@ -984,8 +982,6 @@ async function runAllTests(web3, context, contractName, contract) {
                 [dTokenExchangeRate, cTokenExchangeRate] = validateDTokenAccrueEvent(
                     events, 0, contractName, web3, tester, storedDTokenExchangeRate, storedCTokenExchangeRate
                 );
-
-                console.log(JSON.stringify(events, null, 2));
 
                 const dTokenTransferEvent = events[1];
                 const dTokenRedeemEvent = events[2];
