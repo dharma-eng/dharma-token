@@ -311,14 +311,21 @@ async function runAllTests(web3, context, contractName, contract) {
         receipt => {
             const events = tester.getEvents(receipt, contractNames);
 
-            assert.strictEqual(events.length, 3);
+            const extraEvents = contractName === 'Dharma Dai' ? 2 : 0;
 
-            const transferEvent = events[1];
-            const collectSurplusEvent = events[2];
+            assert.strictEqual(events.length, 4 + extraEvents);
 
-            // Ensure that accrual is performed correctly
+            const transferEvent = events[2 + extraEvents];
+            const collectSurplusEvent = events[3 + extraEvents];
+
+            // Ensure that cToken accrual is performed correctly
+            validateCTokenInterestAccrualEvents(
+                events, 0, cTokenSymbols[contractName]
+            );            
+
+            // Ensure that dToken accrual is performed correctly
             [dTokenExchangeRate, cTokenExchangeRate] = validateDTokenAccrueEvent(
-                events, 0, contractName, web3, tester, storedDTokenExchangeRate, storedCTokenExchangeRate
+                events, 1 + extraEvents, contractName, web3, tester, storedDTokenExchangeRate, storedCTokenExchangeRate
             );
 
             // Ensure that cToken transfer of 0 tokens is performed correctly
