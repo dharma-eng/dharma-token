@@ -1532,6 +1532,40 @@ async function runAllTests(web3, context, contractName, contract) {
         await tester.revertToSnapShot(snapshotId);
     }
 
+    async function testSpreadPerBlock() {
+        const snapshot = await tester.takeSnapshot();
+        const { result: snapshotId } = snapshot;
+        await tester.runTest(
+            `${contractName} spread per block is 10% of ${cTokenSymbols[contractName]} supply rate per block`,
+            DToken,
+            'getSpreadPerBlock',
+            'call',
+            [],
+            true,
+            async value =>  {
+                await tester.revertToSnapShot(snapshotId);
+
+                let cTokenSupplyRate;
+                await tester.runTest(
+                    `${cTokenSymbols[contractName]} supply rate can be retrieved`,
+                    CToken,
+                    'supplyRatePerBlock',
+                    'call',
+                    [],
+                    true,
+                    value => {
+                        cTokenSupplyRate = web3.utils.toBN(value)
+                    }
+                );
+
+                let dTokenSpreadPerBlock = cTokenSupplyRate.div(tester.TEN);
+                assert.strictEqual(value, dTokenSpreadPerBlock.toString())
+            }
+        );
+        await tester.revertToSnapShot(snapshotId);
+    }
+
+
     await testMint();
     await testRedeemToCToken();
     await testTransfer();
@@ -1540,6 +1574,7 @@ async function runAllTests(web3, context, contractName, contract) {
     await testTransferUnderlying();
     await testTransferUnderlyingFrom();
     await testApprove();
+    await testSpreadPerBlock();
 
 
     console.log(
