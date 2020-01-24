@@ -2286,18 +2286,18 @@ async function runAllTests(web3, context, contractName, contract) {
     }
 
 
-    // await testMint();
-    // await testRedeem();
-    // await testRedeemToCToken();
-    // await testRedeemUnderlyingToCToken();
-    // await testMintViaCToken();
-    // await testTransfer();
-    // await testTransferFrom();
-    // await testAllowance();
-    // await testTransferUnderlying();
-    // await testTransferUnderlyingFrom();
-    // await testApprove();
-    // await testSpreadPerBlock();
+    await testMint();
+    await testRedeem();
+    await testRedeemToCToken();
+    await testRedeemUnderlyingToCToken();
+    await testMintViaCToken();
+    await testTransfer();
+    await testTransferFrom();
+    await testAllowance();
+    await testTransferUnderlying();
+    await testTransferUnderlyingFrom();
+    await testApprove();
+    await testSpreadPerBlock();
     await testRequireNonNull();
 
 
