@@ -12,6 +12,13 @@ interface DTokenInterface {
   event Accrue(uint256 dTokenExchangeRate, uint256 cTokenExchangeRate);
   event CollectSurplus(uint256 surplusAmount, uint256 surplusCTokens);
 
+  // The block number and cToken + dToken exchange rates are updated on accrual.
+  struct AccrualIndex {
+    uint112 dTokenExchangeRate;
+    uint112 cTokenExchangeRate;
+    uint32 block;
+  }
+
   // external functions (trigger accrual)
   function mint(uint256 underlyingToSupply) external returns (uint256 dTokensMinted);
   function mintViaCToken(uint256 cTokensToSupply) external returns (uint256 dTokensMinted);
@@ -30,6 +37,7 @@ interface DTokenInterface {
   function getSurplusUnderlying() external view returns (uint256 underlyingSurplus);
   function exchangeRateCurrent() external view returns (uint256 dTokenExchangeRate);
   function supplyRatePerBlock() external view returns (uint256 dTokenInterestRate);
+  function accrualBlockNumber() external view returns (uint256 blockNumber);
   function getSpreadPerBlock() external view returns (uint256 rateSpread);
   function getVersion() external pure returns (uint256 version);
 }

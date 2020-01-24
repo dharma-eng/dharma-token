@@ -1,6 +1,7 @@
 pragma solidity 0.5.11;
 
 import "@openzeppelin/contracts/math/SafeMath.sol";
+import "./DharmaTokenHelpers.sol";
 import "../../interfaces/CTokenInterface.sol";
 import "../../interfaces/DTokenInterface.sol";
 import "../../interfaces/ERC20Interface.sol";
@@ -15,18 +16,13 @@ import "../../interfaces/CUSDCInterestRateModelInterface.sol";
  * upgradeable, and serves as an initial test of the eventual dUSDC mechanics.
  * The dUSDC exchange rate will grow at 90% the rate of the cUSDC exchange rate.
  */
-contract DharmaUSDC is ERC20Interface, DTokenInterface {
+contract DharmaUSDC is ERC20Interface, DTokenInterface, DharmaTokenHelpers {
   using SafeMath for uint256;
 
   uint256 internal constant _DHARMA_USDC_VERSION = 0;
-
   string internal constant _NAME = "Dharma USDC";
   string internal constant _SYMBOL = "dUSDC";
-  uint8 internal constant _DECIMALS = 8; // to match cUSDC
-
-  uint256 internal constant _SCALING_FACTOR = 1e18;
-  uint256 internal constant _SCALING_FACTOR_SQUARED = 1e36;
-  uint256 internal constant _COMPOUND_SUCCESS = 0;
+  string internal constant _CTOKEN_SYMBOL = "cUSDC";
 
   CTokenInterface internal constant _CUSDC = CTokenInterface(
     0x39AA39c021dfbaE8faC545936693aC917d5E7563 // mainnet
@@ -39,16 +35,15 @@ contract DharmaUSDC is ERC20Interface, DTokenInterface {
   // Note: this is just an EOA for the initial prototype.
   address internal constant _VAULT = 0x7e4A8391C728fEd9069B2962699AB416628B19Fa;
 
-  // Slot zero tracks the last stored dUSDC exchange rate.
-  uint256 private _dUSDCExchangeRate;
+  uint256 internal constant _SCALING_FACTOR_SQUARED = 1e36;
 
-  // Slot one tracks the last stored cUSDC exchange rate.
-  uint256 private _cUSDCExchangeRate;
+  // Slot zero tracks block number and dUSDC + cUSDC exchange rates on accruals.
+  AccrualIndex private _accrualIndex;
 
-  // Slot two tracks the total issued dUSDC tokens.
+  // Slot one tracks the total issued dUSDC tokens.
   uint256 private _totalSupply;
 
-  // Slots three and four are entrypoints into balance and allowance mappings.
+  // Slots two and three are entrypoints into balance and allowance mappings.
   mapping (address => uint256) private _balances;
   mapping (address => mapping (address => uint256)) private _allowances;
 
@@ -56,8 +51,18 @@ contract DharmaUSDC is ERC20Interface, DTokenInterface {
     // Approve cUSDC to transfer USDC on behalf of this contract in order to mint.
     require(_USDC.approve(address(_CUSDC), uint256(-1)));
 
-    _dUSDCExchangeRate = 1e16; // 1 USDC == 1 dUSDC to start
-    _cUSDCExchangeRate = _CUSDC.exchangeRateCurrent();
+    // Initial dUSDC exchange rate is 1-to-1 (USDC has 6 decimals, dDSDC has 8).
+    uint256 dUSDCExchangeRate = 1e16;
+
+    // Get initial cUSDC exchange rate, accruing cUSDC interest in the process.
+    uint256 cUSDCExchangeRate = _CUSDC.exchangeRateCurrent();
+
+    // Initialize accrual index with current block number and exchange rates.
+    AccrualIndex storage accrualIndex = _accrualIndex;
+    accrualIndex.dTokenExchangeRate = uint112(dUSDCExchangeRate);
+    accrualIndex.cTokenExchangeRate = _safeUint112(cUSDCExchangeRate);
+    accrualIndex.block = uint32(block.number);
+    emit Accrue(dUSDCExchangeRate, cUSDCExchangeRate);
   }
 
   /**
@@ -82,13 +87,13 @@ contract DharmaUSDC is ERC20Interface, DTokenInterface {
       _CUSDC.mint.selector, usdcToSupply
     ));
 
-    _checkCompoundInteraction(_CUSDC.mint.selector, ok, data);
+    _checkCompoundInteraction(_CUSDC.mint.selector, ok, data, _CTOKEN_SYMBOL);
 
     // Accrue after the Compound mint to avoid duplicating calculations.
-    _accrue();
+    (uint256 dUSDCExchangeRate, ) = _accrue();
 
     // Determine the dUSDC to mint using the exchange rate.
-    dUSDCMinted = (usdcToSupply.mul(_SCALING_FACTOR)).div(_dUSDCExchangeRate);
+    dUSDCMinted = (usdcToSupply.mul(_SCALING_FACTOR)).div(dUSDCExchangeRate);
 
     // Mint dUSDC to the caller.
     _mint(msg.sender, usdcToSupply, dUSDCMinted);
@@ -104,19 +109,24 @@ contract DharmaUSDC is ERC20Interface, DTokenInterface {
    */
   function mintViaCToken(
     uint256 cUSDCToSupply
-  ) external accrues returns (uint256 dUSDCMinted) {
+  ) external returns (uint256 dUSDCMinted) {
     // Pull in cUSDC - ensure that this contract has sufficient allowance.
     (bool ok, bytes memory data) = address(_CUSDC).call(abi.encodeWithSelector(
       _CUSDC.transferFrom.selector, msg.sender, address(this), cUSDCToSupply
     ));
 
-    _checkCompoundInteraction(_CUSDC.transferFrom.selector, ok, data);
+    _checkCompoundInteraction(
+      _CUSDC.transferFrom.selector, ok, data, _CTOKEN_SYMBOL
+    );
+
+    // Accrue interest and retrieve the current exchange rates.
+    (uint256 dUSDCExchangeRate, uint256 cUSDCExchangeRate) = _accrue();
 
     // Determine the USDC equivalent of the supplied cUSDC amount.
-    uint256 usdcEquivalent = cUSDCToSupply.mul(_cUSDCExchangeRate) / _SCALING_FACTOR;
+    uint256 usdcEquivalent = cUSDCToSupply.mul(cUSDCExchangeRate) / _SCALING_FACTOR;
 
     // Determine the dUSDC to mint using the exchange rate.
-    dUSDCMinted = (usdcEquivalent.mul(_SCALING_FACTOR)).div(_dUSDCExchangeRate);
+    dUSDCMinted = (usdcEquivalent.mul(_SCALING_FACTOR)).div(dUSDCExchangeRate);
 
     // Mint dUSDC to the caller.
     _mint(msg.sender, usdcEquivalent, dUSDCMinted);
@@ -130,9 +140,12 @@ contract DharmaUSDC is ERC20Interface, DTokenInterface {
    */
   function redeem(
     uint256 dUSDCToBurn
-  ) external accrues returns (uint256 usdcReceived) {
+  ) external returns (uint256 usdcReceived) {
+    // Accrue interest and retrieve the current dUSDC exchange rate.
+    (uint256 dUSDCExchangeRate, ) = _accrue();
+
     // Determine the underlying USDC value of the dUSDC to be burned.
-    usdcReceived = dUSDCToBurn.mul(_dUSDCExchangeRate) / _SCALING_FACTOR;
+    usdcReceived = dUSDCToBurn.mul(dUSDCExchangeRate) / _SCALING_FACTOR;
 
     // Burn the dUSDC.
     _burn(msg.sender, usdcReceived, dUSDCToBurn);
@@ -142,7 +155,9 @@ contract DharmaUSDC is ERC20Interface, DTokenInterface {
       _CUSDC.redeemUnderlying.selector, usdcReceived
     ));
 
-    _checkCompoundInteraction(_CUSDC.redeemUnderlying.selector, ok, data);
+    _checkCompoundInteraction(
+      _CUSDC.redeemUnderlying.selector, ok, data, _CTOKEN_SYMBOL
+    );
 
     // Send the USDC to the redeemer.
     require(_USDC.transfer(msg.sender, usdcReceived), "USDC transfer failed.");
@@ -156,12 +171,15 @@ contract DharmaUSDC is ERC20Interface, DTokenInterface {
    */
   function redeemToCToken(
     uint256 dUSDCToBurn
-  ) external accrues returns (uint256 cUSDCReceived) {
+  ) external returns (uint256 cUSDCReceived) {
+    // Accrue interest and retrieve the current exchange rates.
+    (uint256 dUSDCExchangeRate, uint256 cUSDCExchangeRate) = _accrue();
+
     // Determine the underlying USDC value of the dUSDC to be burned.
-    uint256 usdcEquivalent = dUSDCToBurn.mul(_dUSDCExchangeRate) / _SCALING_FACTOR;
+    uint256 usdcEquivalent = dUSDCToBurn.mul(dUSDCExchangeRate) / _SCALING_FACTOR;
 
     // Determine the amount of cUSDC corresponding to the redeemed USDC value.
-    cUSDCReceived = (usdcEquivalent.mul(_SCALING_FACTOR)).div(_cUSDCExchangeRate);
+    cUSDCReceived = (usdcEquivalent.mul(_SCALING_FACTOR)).div(cUSDCExchangeRate);
 
     // Burn the dUSDC.
     _burn(msg.sender, usdcEquivalent, dUSDCToBurn);
@@ -171,7 +189,7 @@ contract DharmaUSDC is ERC20Interface, DTokenInterface {
       _CUSDC.transfer.selector, msg.sender, cUSDCReceived
     ));
 
-    _checkCompoundInteraction(_CUSDC.transfer.selector, ok, data);
+    _checkCompoundInteraction(_CUSDC.transfer.selector, ok, data, _CTOKEN_SYMBOL);
   }
 
   /**
@@ -190,14 +208,16 @@ contract DharmaUSDC is ERC20Interface, DTokenInterface {
       _CUSDC.redeemUnderlying.selector, usdcToReceive
     ));
 
-    _checkCompoundInteraction(_CUSDC.redeemUnderlying.selector, ok, data);
+    _checkCompoundInteraction(
+      _CUSDC.redeemUnderlying.selector, ok, data, _CTOKEN_SYMBOL
+    );
 
     // Accrue after the Compound redeem to avoid duplicating calculations.
-    _accrue();
+    (uint256 dUSDCExchangeRate, ) = _accrue();
 
     // Determine the dUSDC to redeem using the exchange rate.
     dUSDCBurned = (
-      (usdcToReceive.mul(_SCALING_FACTOR)).div(_dUSDCExchangeRate)
+      (usdcToReceive.mul(_SCALING_FACTOR)).div(dUSDCExchangeRate)
     ).add(1);
 
     // Burn the dUSDC.
@@ -216,41 +236,58 @@ contract DharmaUSDC is ERC20Interface, DTokenInterface {
    */
   function redeemUnderlyingToCToken(
     uint256 usdcToReceive
-  ) external accrues returns (uint256 dUSDCBurned) {
+  ) external returns (uint256 dUSDCBurned) {
+    // Accrue interest and retrieve the current exchange rates.
+    (uint256 dUSDCExchangeRate, uint256 cUSDCExchangeRate) = _accrue();
+
     // Determine the dUSDC to redeem using the exchange rate.
-    // TODO: round up
-    dUSDCBurned = (usdcToReceive.mul(_SCALING_FACTOR)).div(_dUSDCExchangeRate);
+    dUSDCBurned = (
+      (usdcToReceive.mul(_SCALING_FACTOR)).div(dUSDCExchangeRate)
+    ).add(1);
 
     // Burn the dUSDC.
     _burn(msg.sender, usdcToReceive, dUSDCBurned);
 
     // Determine the amount of cUSDC corresponding to the redeemed USDC value.
-    uint256 cUSDCToReceive = usdcToReceive.mul(_SCALING_FACTOR).div(_cUSDCExchangeRate);
+    uint256 cUSDCToReceive = (
+      usdcToReceive.mul(_SCALING_FACTOR)
+    ).div(cUSDCExchangeRate);
 
     // Transfer the cUSDC to the caller and ensure that the operation succeeds.
     (bool ok, bytes memory data) = address(_CUSDC).call(abi.encodeWithSelector(
       _CUSDC.transfer.selector, msg.sender, cUSDCToReceive
     ));
 
-    _checkCompoundInteraction(_CUSDC.transfer.selector, ok, data);
+    _checkCompoundInteraction(_CUSDC.transfer.selector, ok, data, _CTOKEN_SYMBOL);
   }
 
   /**
    * @notice Transfer cUSDC in excess of the total dUSDC balance to a dedicated
-   * "vault" account.
+   * "vault" account. A "hard" accrual will first be performed, triggering an
+   * accrual on both cUSDC and dUSDC.
    * @return The amount of cUSDC transferred to the vault account.
    */
-  function pullSurplus() external accrues returns (uint256 cUSDCSurplus) {
-    // Determine the cUSDC surplus (difference between total dUSDC and total cUSDC)
+  function pullSurplus() external returns (uint256 cUSDCSurplus) {
+    // Accrue interest on cUSDC.
+    (bool ok, bytes memory data) = address(_CUSDC).call(abi.encodeWithSelector(
+      _CUSDC.accrueInterest.selector
+    ));
+
+    _checkCompoundInteraction(_CUSDC.accrueInterest.selector, ok, data, _CTOKEN_SYMBOL);
+
+    // Accrue interest on dUSDC.
+    _accrue();
+
+    // Determine cUSDC surplus (difference between total dUSDC and total cUSDC).
     uint256 usdcSurplus;
     (usdcSurplus, cUSDCSurplus) = _getSurplus();
 
     // Transfer the cUSDC to the vault and ensure that the operation succeeds.
-    (bool ok, bytes memory data) = address(_CUSDC).call(abi.encodeWithSelector(
+    (ok, data) = address(_CUSDC).call(abi.encodeWithSelector(
       _CUSDC.transfer.selector, _VAULT, cUSDCSurplus
     ));
 
-    _checkCompoundInteraction(_CUSDC.transfer.selector, ok, data);
+    _checkCompoundInteraction(_CUSDC.transfer.selector, ok, data, _CTOKEN_SYMBOL);
 
     emit CollectSurplus(usdcSurplus, cUSDCSurplus);
   }
@@ -259,8 +296,9 @@ contract DharmaUSDC is ERC20Interface, DTokenInterface {
    * @notice Manually advance the dUSDC exchange rate and update the cUSDC
    * exchange rate to that of the current block.
    */
-  function accrueInterest() external accrues {
-    // The `accrues()` modifier contains all function logic.
+  function accrueInterest() external {
+    // Accrue interest on dUSDC.
+    _accrue();
   }
 
   /**
@@ -269,9 +307,11 @@ contract DharmaUSDC is ERC20Interface, DTokenInterface {
    * @param amount uint256 The amount of tokens to transfer.
    * @return A boolean indicating whether the transfer was successful.
    */
-  function transfer(address recipient, uint256 amount) external returns (bool) {
+  function transfer(
+    address recipient, uint256 amount
+  ) external returns (bool success) {
     _transfer(msg.sender, recipient, amount);
-    return true;
+    success = true;
   }
 
   /**
@@ -283,12 +323,15 @@ contract DharmaUSDC is ERC20Interface, DTokenInterface {
    */
   function transferUnderlying(
     address recipient, uint256 amount
-  ) external accrues returns (bool) {
+  ) external returns (bool success) {
+    // Accrue interest and retrieve the current dUSDC exchange rate.
+    (uint256 dUSDCExchangeRate, ) = _accrue();
+
     // Determine the dUSDC to transfer using the exchange rate
-    uint256 dUSDCAmount = (amount.mul(_SCALING_FACTOR)).div(_dUSDCExchangeRate);
+    uint256 dUSDCAmount = (amount.mul(_SCALING_FACTOR)).div(dUSDCExchangeRate);
 
     _transfer(msg.sender, recipient, dUSDCAmount);
-    return true;
+    success = true;
   }
 
   /**
@@ -298,9 +341,11 @@ contract DharmaUSDC is ERC20Interface, DTokenInterface {
    * @param value uint256 The size of the allowance to grant.
    * @return A boolean indicating whether the approval was successful.
    */
-  function approve(address spender, uint256 value) external returns (bool) {
+  function approve(
+    address spender, uint256 value
+  ) external returns (bool success) {
     _approve(msg.sender, spender, value);
-    return true;
+    success = true;
   }
 
   /**
@@ -313,13 +358,13 @@ contract DharmaUSDC is ERC20Interface, DTokenInterface {
    */
   function transferFrom(
     address sender, address recipient, uint256 amount
-  ) external returns (bool) {
+  ) external returns (bool success) {
     _transfer(sender, recipient, amount);
     uint256 allowance = _allowances[sender][msg.sender];
     if (allowance != uint256(-1)) {
       _approve(sender, msg.sender, allowance.sub(amount));
     }
-    return true;
+    success = true;
   }
 
   /**
@@ -332,16 +377,19 @@ contract DharmaUSDC is ERC20Interface, DTokenInterface {
    */
   function transferUnderlyingFrom(
     address sender, address recipient, uint256 amount
-  ) external accrues returns (bool) {
-    // Determine the dUSDC to transfer using the exchange rate
-    uint256 dUSDCAmount = (amount.mul(_SCALING_FACTOR)).div(_dUSDCExchangeRate);
+  ) external returns (bool success) {
+    // Accrue interest and retrieve the current dUSDC exchange rate.
+    (uint256 dUSDCExchangeRate, ) = _accrue();
+
+    // Determine the dUSDC to transfer using the exchange rate.
+    uint256 dUSDCAmount = (amount.mul(_SCALING_FACTOR)).div(dUSDCExchangeRate);
 
     _transfer(sender, recipient, dUSDCAmount);
     uint256 allowance = _allowances[sender][msg.sender];
     if (allowance != uint256(-1)) {
       _approve(sender, msg.sender, allowance.sub(dUSDCAmount));
     }
-    return true;
+    success = true;
   }
 
   /**
@@ -352,11 +400,11 @@ contract DharmaUSDC is ERC20Interface, DTokenInterface {
    */
   function increaseAllowance(
     address spender, uint256 addedValue
-  ) external returns (bool) {
+  ) external returns (bool success) {
     _approve(
       msg.sender, spender, _allowances[msg.sender][spender].add(addedValue)
     );
-    return true;
+    success = true;
   }
 
   /**
@@ -367,11 +415,11 @@ contract DharmaUSDC is ERC20Interface, DTokenInterface {
    */
   function decreaseAllowance(
     address spender, uint256 subtractedValue
-  ) external returns (bool) {
+  ) external returns (bool success) {
     _approve(
       msg.sender, spender, _allowances[msg.sender][spender].sub(subtractedValue)
     );
-    return true;
+    success = true;
   }
 
   /**
@@ -414,6 +462,15 @@ contract DharmaUSDC is ERC20Interface, DTokenInterface {
   }
 
   /**
+   * @notice View function to get the block number where accrual was last
+   * performed.
+   * @return The block number where accrual was last performed.
+   */
+  function accrualBlockNumber() external view returns (uint256 blockNumber) {
+    blockNumber = _accrualIndex.block;
+  }
+
+  /**
    * @notice View function to get the current cUSDC interest spread over dUSDC per
    * block (multiplied by 10^18).
    * @return The current interest rate spread.
@@ -427,19 +484,23 @@ contract DharmaUSDC is ERC20Interface, DTokenInterface {
    * @notice View function to get the total dUSDC supply.
    * @return The total supply.
    */
-  function totalSupply() external view returns (uint256) {
-    return _totalSupply;
+  function totalSupply() external view returns (uint256 dUSDCTotalSupply) {
+    dUSDCTotalSupply = _totalSupply;
   }
 
   /**
    * @notice View function to get the total dUSDC supply, denominated in USDC.
    * @return The total supply.
    */
-  function totalSupplyUnderlying() external view returns (uint256) {
+  function totalSupplyUnderlying() external view returns (
+    uint256 dUSDCTotalSupplyInUSDC
+  ) {
     (uint256 dUSDCExchangeRate,,) = _getAccruedInterest();
 
-    // Determine the total value of all issued dUSDC in USDC
-    return _totalSupply.mul(dUSDCExchangeRate) / _SCALING_FACTOR;
+    // Determine the total value of all issued dUSDC in USDC.
+    dUSDCTotalSupplyInUSDC = (
+      _totalSupply.mul(dUSDCExchangeRate) / _SCALING_FACTOR
+    );
   }
 
   /**
@@ -474,32 +535,32 @@ contract DharmaUSDC is ERC20Interface, DTokenInterface {
    * @param spender address The account that has been granted the allowance.
    * @return The allowance of the given spender for the given owner.
    */
-  function allowance(address owner, address spender) external view returns (uint256) {
-    return _allowances[owner][spender];
+  function allowance(address owner, address spender) external view returns (uint256 dUSDCAllowance) {
+    dUSDCAllowance = _allowances[owner][spender];
   }
 
   /**
    * @notice Pure function to get the name of the token.
    * @return The name of the token.
    */
-  function name() external pure returns (string memory) {
-    return _NAME;
+  function name() external pure returns (string memory dUSDCName) {
+    dUSDCName = _NAME;
   }
 
   /**
    * @notice Pure function to get the symbol of the token.
    * @return The symbol of the token.
    */
-  function symbol() external pure returns (string memory) {
-    return _SYMBOL;
+  function symbol() external pure returns (string memory dUSDCSymbol) {
+    dUSDCSymbol = _SYMBOL;
   }
 
   /**
    * @notice Pure function to get the number of decimals of the token.
    * @return The number of decimals of the token.
    */
-  function decimals() external pure returns (uint8) {
-    return _DECIMALS;
+  function decimals() external pure returns (uint8 dUSDCDecimals) {
+    dUSDCDecimals = _DECIMALS;
   }
 
   /**
@@ -513,16 +574,20 @@ contract DharmaUSDC is ERC20Interface, DTokenInterface {
   /**
    * @notice Internal function to trigger accrual and to update the dUSDC and
    * cUSDC exchange rates in storage if necessary.
+   * @return The current dUSDC and cUSDC exchange rates.
    */
-  function _accrue() internal {
-    (
-      uint256 dUSDCExchangeRate, uint256 cUSDCExchangeRate, bool fullyAccrued
-    ) = _getAccruedInterest();
+  function _accrue() internal returns (
+    uint256 dUSDCExchangeRate, uint256 cUSDCExchangeRate
+  ){
+    bool accrued;
+    (dUSDCExchangeRate, cUSDCExchangeRate, accrued) = _getAccruedInterest();
 
-    if (!fullyAccrued) {
-      // Update storage with dUSDC + cUSDC exchange rates as of the current block
-      _dUSDCExchangeRate = dUSDCExchangeRate;
-      _cUSDCExchangeRate = cUSDCExchangeRate;
+    if (!accrued) {
+      // Update storage with dUSDC + cUSDC exchange rates as of current block.
+      AccrualIndex storage accrualIndex = _accrualIndex;
+      accrualIndex.dTokenExchangeRate = _safeUint112(dUSDCExchangeRate);
+      accrualIndex.cTokenExchangeRate = _safeUint112(cUSDCExchangeRate);
+      accrualIndex.block = uint32(block.number);
       emit Accrue(dUSDCExchangeRate, cUSDCExchangeRate);
     }
   }
@@ -596,22 +661,24 @@ contract DharmaUSDC is ERC20Interface, DTokenInterface {
   /**
    * @notice Internal view function to get the latest dUSDC and cUSDC exchange
    * rates for USDC and provide the value for each.
-   * @return The dUSDC and cUSDC exchange rate, as well as a boolean indicating if
-   * interest accrual has been processed already or needs to be calculated and
-   * placed in storage.
+   * @return The dUSDC and cUSDC exchange rate, as well as a boolean indicating
+   * if interest accrual has been processed already or needs to be calculated
+   * and placed in storage.
    */
   function _getAccruedInterest() internal view returns (
     uint256 dUSDCExchangeRate, uint256 cUSDCExchangeRate, bool fullyAccrued
   ) {
-    // Get the stored dUSDC and cUSDC exhange rate.
-    uint256 storedDUSDCExchangeRate = _dUSDCExchangeRate;
-    uint256 storedCUSDCExchangeRate = _cUSDCExchangeRate;
+    // Get the stored accrual block and dUSDC + cUSDC exhange rates.
+    AccrualIndex memory accrualIndex = _accrualIndex;
+    uint256 storedDUSDCExchangeRate = uint256(accrualIndex.dTokenExchangeRate);
+    uint256 storedCUSDCExchangeRate = uint256(accrualIndex.cTokenExchangeRate);
+    uint256 accrualBlock = uint256(accrualIndex.block);
 
     // Get the current cUSDC exchange rate.
     (cUSDCExchangeRate,) = _getCurrentCUSDCRates();
 
-    // Only recompute dUSDC exchange rate if cUSDC exchange rate has changed.
-    fullyAccrued = (cUSDCExchangeRate == storedCUSDCExchangeRate);
+    // Only recompute dUSDC exchange rate if accrual has not already occurred.
+    fullyAccrued = (accrualBlock == block.number);
     if (fullyAccrued) {
       dUSDCExchangeRate = storedDUSDCExchangeRate;
     } else {
@@ -731,130 +798,5 @@ contract DharmaUSDC is ERC20Interface, DTokenInterface {
   ) {
     (, cUSDCSupplyRate) = _getCurrentCUSDCRates();
     dUSDCSupplyRate = cUSDCSupplyRate.mul(9) / 10;
-  }
-
-  /**
-   * @notice Internal pure function to determine if a call to cUSDC succeeded and
-   * to revert, supplying the reason, if it failed. Failure can be caused by a
-   * call that reverts, or by a call that does not revert but returns a non-zero
-   * error code.
-   * @param functionSelector bytes4 The function selector that was called.
-   * @param ok bool A boolean representing whether the call returned or
-   * reverted.
-   * @param data bytes The data provided by the returned or reverted call.
-   */
-  function _checkCompoundInteraction(
-    bytes4 functionSelector, bool ok, bytes memory data
-  ) internal pure {
-    // Determine if something went wrong with the attempt.
-    if (ok) {
-      if (
-        functionSelector == _CUSDC.transfer.selector ||
-        functionSelector == _CUSDC.transferFrom.selector
-      ) {
-        require(
-          abi.decode(data, (bool)),
-          string(
-            abi.encodePacked(
-              "Compound cUSDC contract returned false on calling ",
-              _getFunctionName(functionSelector),
-              "."
-            )
-          )
-        );
-      } else {
-        uint256 compoundError = abi.decode(data, (uint256)); // throw on no data
-        if (compoundError != _COMPOUND_SUCCESS) {
-          revert(
-            string(
-              abi.encodePacked(
-                "Compound cUSDC contract returned error code ",
-                uint8((compoundError / 10) + 48),
-                uint8((compoundError % 10) + 48),
-                " on calling ",
-                _getFunctionName(functionSelector),
-                "."
-              )
-            )
-          );
-        }
-      }
-    } else {
-      revert(
-        string(
-          abi.encodePacked(
-            "Compound cUSDC contract reverted while attempting to call ",
-            _getFunctionName(functionSelector),
-            ": ",
-            _decodeRevertReason(data)
-          )
-        )
-      );
-    }
-  }
-
-  /**
-   * @notice Internal pure function to get a Compound function name based on the
-   * selector.
-   * @param functionSelector bytes4 The function selector.
-   * @return The name of the function as a string.
-   */
-  function _getFunctionName(
-    bytes4 functionSelector
-  ) internal pure returns (string memory functionName) {
-    if (functionSelector == _CUSDC.mint.selector) {
-      functionName = 'mint';
-    } else if (functionSelector == _CUSDC.redeemUnderlying.selector) {
-      functionName = 'redeemUnderlying';
-    } else if (functionSelector == _CUSDC.transferFrom.selector) {
-      functionName = 'transferFrom';
-    } else if (functionSelector == _CUSDC.transfer.selector) {
-      functionName = 'transfer';
-    } else {
-      functionName = 'an unknown function';
-    }
-  }
-
-  /**
-   * @notice Internal pure function to decode revert reasons. The revert reason
-   * prefix is removed and the remaining string argument is decoded.
-   * @param revertData bytes The raw data supplied alongside the revert.
-   * @return The decoded revert reason string.
-   */
-  function _decodeRevertReason(
-    bytes memory revertData
-  ) internal pure returns (string memory revertReason) {
-    // Solidity prefixes revert reason with 0x08c379a0 -> Error(string) selector
-    if (
-      revertData.length > 68 && // prefix (4) + position (32) + length (32)
-      revertData[0] == byte(0x08) &&
-      revertData[1] == byte(0xc3) &&
-      revertData[2] == byte(0x79) &&
-      revertData[3] == byte(0xa0)
-    ) {
-      // Get the revert reason without the prefix from the revert data.
-      bytes memory revertReasonBytes = new bytes(revertData.length - 4);
-      for (uint256 i = 4; i < revertData.length; i++) {
-        revertReasonBytes[i - 4] = revertData[i];
-      }
-
-      // Decode the resultant revert reason as a string.
-      revertReason = abi.decode(revertReasonBytes, (string));
-    } else {
-      // Simply return the default, with no revert reason.
-      revertReason = "(no revert reason)";
-    }
-  }
-
-  /**
-   * @notice Modifier to determine the latest dUSDC and cUSDC exchange rates, and
-   * to update the respective storage values if they have not already been
-   * updated at some point in the current block, before proceeding to execution
-   * of the rest of the decorated function.
-   */
-  modifier accrues() {
-    _accrue();
-
-    _;
   }
 }

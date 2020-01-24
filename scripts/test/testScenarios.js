@@ -86,19 +86,27 @@ const validateDTokenAccrueEvent = (
 }
 
 const prepareToValidateAccrual = async (web3, dToken) => {
-    // dToken ExchangeRate "checkpoint" is stored at slot zero.
+    const slotZero = await web3.eth.getStorageAt(dToken.options.address, 0)  
+    const slotRaw = slotZero.slice(2).padStart(64, '0')
+
+    // dToken ExchangeRate "checkpoint" is stored at the end of slot zero.
     const storedDTokenExchangeRate = web3.utils.toBN(
-        await web3.eth.getStorageAt(dToken.options.address, 0)
+        '0x' + slotRaw.slice(36, 64)
     )
 
-    // cToken ExchangeRate "checkpoint" is stored at slot one.
+    // cToken ExchangeRate "checkpoint" is stored in the middle of slot zero.
     const storedCTokenExchangeRate = web3.utils.toBN(
-        await web3.eth.getStorageAt(dToken.options.address, 1)
+        '0x' + slotRaw.slice(8, 36)
     )
 
     const blockNumber = (await web3.eth.getBlock('latest')).number
 
-    return [storedDTokenExchangeRate, storedCTokenExchangeRate, blockNumber]
+    // last accrual block is stored at the start of slot zero.
+    const lastAccrualBlock = parseInt(web3.utils.toBN(
+        slotZero.slice(0, 8)
+    ).toString(), 10)
+
+    return [storedDTokenExchangeRate, storedCTokenExchangeRate, blockNumber, lastAccrualBlock]
 }
 
 async function runAllTests(web3, context, contractName, contract) {
@@ -882,21 +890,62 @@ async function runAllTests(web3, context, contractName, contract) {
 
     async function testMintViaCToken() {
         let currentCTokenAccountBalance;
-        let currentCTokenExchangeRate;
+        let currentDTokenAccountBalance;
+        let currentUnderlyingAccountBalance;
+        let currentDTokenTotalSupply;
+        let currentDTokenTotalSupplyUnderlying;
+        let currentDTokenSupplyRatePerBlock;
 
         await tester.runTest(
-            `Get ${cTokenSymbols[contractName]} exchange rate`,
-            CToken,
-            'exchangeRateCurrent',
+            `${tokenSymbols[contractName]} account balance can be retrieved prior to minting`,
+            DToken,
+            'balanceOf',
+            'call',
+            [tester.address],
+            true,
+            value => {
+                currentDTokenAccountBalance = web3.utils.toBN(value)
+            }
+        );
+
+        await tester.runTest(
+            `${tokenSymbols[contractName]} account underlying balance can be retrieved prior to minting`,
+            DToken,
+            'balanceOfUnderlying',
+            'call',
+            [tester.address],
+            true,
+            value => {
+                currentUnderlyingAccountBalance = web3.utils.toBN(value)
+            }
+        );
+
+        await tester.runTest(
+            `${tokenSymbols[contractName]} total supply can be retrieved prior to minting`,
+            DToken,
+            'totalSupply',
             'call',
             [],
             true,
             value => {
-                currentCTokenExchangeRate = web3.utils.toBN(value)
+                currentDTokenTotalSupply = web3.utils.toBN(value)
             }
         );
+
         await tester.runTest(
-            `${tokenSymbols[contractName]} account balance can be retrieved prior to redeeming`,
+            `${tokenSymbols[contractName]} total underlying supply can be retrieved prior to minting`,
+            DToken,
+            'totalSupplyUnderlying',
+            'call',
+            [],
+            true,
+            value => {
+                currentDTokenTotalSupplyUnderlying = web3.utils.toBN(value)
+            }
+        );
+
+        await tester.runTest(
+            `${cTokenSymbols[contractName]} account balance can be retrieved prior to minting`,
             CToken,
             'balanceOf',
             'call',
@@ -907,7 +956,7 @@ async function runAllTests(web3, context, contractName, contract) {
             }
         );
 
-        const cTokenToSupply = currentCTokenAccountBalance;
+        const cTokenToSupply = currentCTokenAccountBalance.div(web3.utils.toBN('2'));
 
         await tester.runTest(
             `${contractName} cannot mint dTokens via cTokens without prior approval`,
@@ -932,6 +981,8 @@ async function runAllTests(web3, context, contractName, contract) {
             blockNumber
         ] = await prepareToValidateAccrual(web3, DToken);
 
+        let mintTokens;
+        let mintAmount;
         await tester.runTest(
             `${contractName} can mint dTokens with cTokens`,
             DToken,
@@ -944,11 +995,12 @@ async function runAllTests(web3, context, contractName, contract) {
 
                 assert.strictEqual(events.length, 4);
 
+				const cTokenTransferEvent = events[0];
+
                 [dTokenExchangeRate, cTokenExchangeRate] = validateDTokenAccrueEvent(
-                    events, 0, contractName, web3, tester, storedDTokenExchangeRate, storedCTokenExchangeRate
+                    events, 1, contractName, web3, tester, storedDTokenExchangeRate, storedCTokenExchangeRate
                 );
 
-                const cTokenTransferEvent = events[1];
                 const dTokenMintEvent = events[2];
                 const dTokenTransferEvent = events[3];
 
@@ -981,11 +1033,11 @@ async function runAllTests(web3, context, contractName, contract) {
 
                 const { returnValues: dTokenMintReturnValues } = dTokenMintEvent;
 
-                const mintTokens = (
+                mintTokens = (
                     cTokenToSupply.mul(cTokenExchangeRate)
                 ).div(tester.SCALING_FACTOR);
 
-                const mintAmount = (
+                mintAmount = (
                     mintTokens.mul(tester.SCALING_FACTOR)
                 ).div(dTokenExchangeRate);
 
@@ -1007,6 +1059,101 @@ async function runAllTests(web3, context, contractName, contract) {
                 assert.strictEqual(dTokenTransferReturnValues.to, tester.address);
             }
         )
+
+        await tester.runTest(
+            `${cTokenSymbols[contractName]} exchange rate matches that from dToken`,
+            CToken,
+            'exchangeRateCurrent',
+            'call',
+            [],
+            true,
+            value => {
+                assert.strictEqual(value, cTokenExchangeRate.toString())
+            }
+        );
+
+        await tester.runTest(
+            `${tokenSymbols[contractName]} supply rate used during minting can be retrieved`,
+            DToken,
+            'supplyRatePerBlock',
+            'call',
+            [],
+            true,
+            value => {
+                currentDTokenSupplyRatePerBlock= web3.utils.toBN(value)
+            }
+        );
+
+        await tester.runTest(
+            `${tokenSymbols[contractName]} account balance is correctly increased after minting`,
+            DToken,
+            'balanceOf',
+            'call',
+            [tester.address],
+            true,
+            value => {
+                assert.strictEqual(value, currentDTokenAccountBalance.add(mintAmount).toString())
+            }
+        );
+
+        await tester.runTest(
+            `${tokenSymbols[contractName]} total supply is correctly increased after minting`,
+            DToken,
+            'totalSupply',
+            'call',
+            [],
+            true,
+            value => {
+            	assert.strictEqual(value, currentDTokenTotalSupply.add(mintAmount).toString())
+            }
+        );
+
+        /* TODO: still working this one out
+        const interestEarnedOnPriorBalance = (
+        	currentUnderlyingAccountBalance.mul(currentDTokenSupplyRatePerBlock)
+        ).div(tester.SCALING_FACTOR);
+
+        const interestEarnedOnPriorSupply = (
+        	currentDTokenTotalSupplyUnderlying.mul(currentDTokenSupplyRatePerBlock)
+        ).div(tester.SCALING_FACTOR);
+
+        await tester.runTest(
+            `${tokenSymbols[contractName]} underlying account balance is correctly increased after minting`,
+            DToken,
+            'balanceOfUnderlying',
+            'call',
+            [tester.address],
+            true,
+            value => {
+                assert.strictEqual(
+                	value,
+                	currentUnderlyingAccountBalance.add(
+                		mintTokens
+                	).add(
+                		interestEarnedOnPriorBalance
+                	).toString()
+                )
+            }
+        );
+
+        await tester.runTest(
+            `${tokenSymbols[contractName]} total underlying supply is correctly increased after minting`,
+            DToken,
+            'totalSupplyUnderlying',
+            'call',
+            [],
+            true,
+            value => {
+                assert.strictEqual(
+                	value,
+                	currentDTokenTotalSupplyUnderlying.add(
+                		mintTokens
+                	).add(
+                		interestEarnedOnPriorSupply
+                	).toString())
+            }
+        );
+        */
     }
 
     async function testTransfer() {
