@@ -2200,9 +2200,94 @@ async function runAllTests(web3, context, contractName, contract) {
         await tester.revertToSnapShot(snapshotId);
     }
 
+    async function testRequireNonNull() {
 
-    await testMint();
-    await testRedeem();
+        await tester.runTest(
+            `${contractName} transfer reverts if recipient is null address`,
+            DToken,
+            'transfer',
+            'send',
+            [constants.NULL_ADDRESS, '0'],
+            false,
+        );
+
+        await tester.runTest(
+            `${contractName} transferUnderlying reverts if recipient is null address`,
+            DToken,
+            'transferUnderlying',
+            'send',
+            [constants.NULL_ADDRESS, '0'],
+            false,
+        );
+
+        await tester.runTest(
+            `${contractName} transferFrom reverts if sender is null address`,
+            DToken,
+            'transferFrom',
+            'send',
+            [constants.NULL_ADDRESS, tester.address, '0'],
+            false,
+        );
+
+        await tester.runTest(
+            `${contractName} transferFrom reverts if recipient is null address`,
+            DToken,
+            'transferFrom',
+            'send',
+            [tester.address, constants.NULL_ADDRESS, '0'],
+            false,
+        );
+
+        await tester.runTest(
+            `${contractName} transferUnderlyingFrom reverts if sender is null address`,
+            DToken,
+            'transferUnderlyingFrom',
+            'send',
+            [constants.NULL_ADDRESS, tester.address, '0'],
+            false,
+        );
+
+        await tester.runTest(
+            `${contractName} transferUnderlyingFrom reverts if recipient is null address`,
+            DToken,
+            'transferUnderlyingFrom',
+            'send',
+            [tester.address, constants.NULL_ADDRESS, '0'],
+            false,
+        );
+
+        await tester.runTest(
+            `${contractName} approve reverts if spender is null address`,
+            DToken,
+            'approve',
+            'send',
+            [constants.NULL_ADDRESS, '0'],
+            false,
+        );
+
+        await tester.runTest(
+            `${contractName} increaseAllowance reverts if spender is null address`,
+            DToken,
+            'increaseAllowance',
+            'send',
+            [constants.NULL_ADDRESS, '0'],
+            false,
+        );
+
+        await tester.runTest(
+            `${contractName} decreaseAllowance reverts if spender is null address`,
+            DToken,
+            'decreaseAllowance',
+            'send',
+            [constants.NULL_ADDRESS, '0'],
+            false,
+        );
+
+    }
+
+
+    // await testMint();
+    // await testRedeem();
     // await testRedeemToCToken();
     // await testRedeemUnderlyingToCToken();
     // await testMintViaCToken();
@@ -2213,6 +2298,7 @@ async function runAllTests(web3, context, contractName, contract) {
     // await testTransferUnderlyingFrom();
     // await testApprove();
     // await testSpreadPerBlock();
+    await testRequireNonNull();
 
 
     console.log(
