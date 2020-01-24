@@ -2470,7 +2470,7 @@ async function runAllTests(web3, context, contractName, contract) {
             true,
         );
 
-        const accrualBlock = currentBlockNumber + 1;
+        const latestAccrualBlock = currentBlockNumber + 1;
 
         await tester.runTest(
             `${contractName} accrualBlockNumber is set correctly`,
@@ -2480,7 +2480,7 @@ async function runAllTests(web3, context, contractName, contract) {
             [],
             true,
             value => {
-               assert.strictEqual(value, accrualBlock.toString());
+               assert.strictEqual(value, latestAccrualBlock.toString());
             }
         );
 
