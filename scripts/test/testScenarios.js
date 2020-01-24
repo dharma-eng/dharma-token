@@ -943,7 +943,7 @@ async function runAllTests(web3, context, contractName, contract) {
         );
 
         let dTokenExchangeRate;
-        let leftOverBalance:
+        let leftOverBalance;
         await tester.runTest(
             `${contractName} can transfer underlying`,
             DToken,
@@ -991,19 +991,6 @@ async function runAllTests(web3, context, contractName, contract) {
             }
         );
 
-        await tester.runTest(
-            `${contractName} exchange rate can be retrieved`,
-            DToken,
-            'exchangeRateCurrent',
-            'call',
-            [],
-            true,
-            value => {
-                dTokenExchangeRate = web3.utils.toBN(value)
-            }
-        );
-
-        const dTokentransferAmount = (initialUnderlyingAmount.mul(tester.SCALING_FACTOR)).div(dTokenExchangeRate);
         const underlyingAmountTransfered = (dTokentransferAmount.mul(dTokenExchangeRate)).div(tester.SCALING_FACTOR);
 
         await tester.runTest(
@@ -1018,7 +1005,9 @@ async function runAllTests(web3, context, contractName, contract) {
             },
         );
 
-        const leftOverUnderlying = initialUnderlyingAmount.sub(underlyingAmountTransfered);
+        const leftOverUnderlying = (
+            leftOverBalance.mul(dTokenExchangeRate)
+        ).div(tester.SCALING_FACTOR);
 
         await tester.runTest(
             `Check transfer sender has correct balance`,
@@ -1028,7 +1017,6 @@ async function runAllTests(web3, context, contractName, contract) {
             [tester.address],
             true,
             value => {
-                console.log({value});
                 assert.strictEqual(value, leftOverUnderlying.toString());
             },
         );
@@ -1042,7 +1030,7 @@ async function runAllTests(web3, context, contractName, contract) {
 
         let balanceAmount;
         await tester.runTest(
-            `Get total underlying ${underlyingSymbols[contractName]} balance`,
+            `Get a ${tokenSymbols[contractName]} account balance`,
             DToken,
             'balanceOf',
             'call',
@@ -1055,7 +1043,7 @@ async function runAllTests(web3, context, contractName, contract) {
 
         let transferUnderlyingAmount;
         await tester.runTest(
-            `Get total underlying ${underlyingSymbols[contractName]} balance`,
+            `Get an underlying ${underlyingSymbols[contractName]} account balance`,
             DToken,
             'balanceOfUnderlying',
             'call',
