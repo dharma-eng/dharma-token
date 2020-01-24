@@ -778,13 +778,62 @@ async function runAllTests(web3, context, contractName, contract) {
             [dTokensToBurn.toString()],
             true,
             receipt => {
+                const extraEvents = contractName === 'Dharma Dai' ? 6 : 0
+
                 const events = tester.getEvents(receipt, contractNames);
 
-                assert.strictEqual(events.length, 0);
+                console.log(JSON.stringify(events, null, 2));
+
+                assert.strictEqual(events.length, 8 + extraEvents);
 
                 [dTokenExchangeRate, cTokenExchangeRate] = validateDTokenAccrueEvent(
                     events, 0, contractName, web3, tester, storedDTokenExchangeRate, storedCTokenExchangeRate
                 );
+
+                const dTokenTransferEvent = events[1];
+                const dTokenRedeemEvent = events[2];
+
+                const { returnValues: dTokenTransferReturnValues } = dTokenTransferEvent;
+
+                // Validate dToken "burn" transfer to null address
+                assert.strictEqual(
+                    dTokenTransferEvent.address,
+                    tokenSymbols[contractName].toUpperCase()
+                );
+                assert.strictEqual(dTokenTransferEvent.eventName, 'Transfer');
+                assert.strictEqual(
+                    dTokenTransferReturnValues.from, tester.address
+                );
+                assert.strictEqual(
+                    dTokenTransferReturnValues.to, constants.NULL_ADDRESS
+                );
+                assert.strictEqual(
+                    dTokenTransferReturnValues.value,
+                    dTokensToBurn.toString()
+                );
+
+                const { returnValues: dTokenRedeemReturnValues } = dTokenRedeemEvent;
+
+                const underlyingEquivalent = (
+                    dTokensToBurn.mul(dTokenExchangeRate)
+                ).div(tester.SCALING_FACTOR)
+
+                // Validate dToken redeem (emits underlying equivalent tokens)
+                assert.strictEqual(
+                    dTokenRedeemEvent.address, tokenSymbols[contractName].toUpperCase()
+                );
+                assert.strictEqual(dTokenRedeemEvent.eventName, 'Redeem');
+                assert.strictEqual(
+                    dTokenRedeemReturnValues.redeemer, tester.address
+                );
+                assert.strictEqual(
+                    dTokenRedeemReturnValues.redeemTokens,
+                    underlyingEquivalent.toString()
+                );
+                assert.strictEqual(
+                    dTokenRedeemReturnValues.redeemAmount,
+                    dTokensToBurn.toString()
+                )
 
             }
         );
