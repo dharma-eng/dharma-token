@@ -942,8 +942,8 @@ async function runAllTests(web3, context, contractName, contract) {
             },
         );
 
-
         let dTokenExchangeRate;
+        let leftOverBalance:
         await tester.runTest(
             `${contractName} can transfer underlying`,
             DToken,
@@ -962,6 +962,8 @@ async function runAllTests(web3, context, contractName, contract) {
 
                 const dTokentransferAmount = (initialUnderlyingAmount.mul(tester.SCALING_FACTOR)).div(dTokenExchangeRate);
 
+                leftOverBalance = balance.sub(dTokentransferAmount)
+
                 const tokenTransferEvent = events[1];
                 assert.strictEqual(
                     tokenTransferEvent.address,
@@ -974,6 +976,18 @@ async function runAllTests(web3, context, contractName, contract) {
                 assert.strictEqual(transferReturnValues.from, tester.address);
                 assert.strictEqual(transferReturnValues.to, tester.addressTwo);
                 assert.strictEqual(transferReturnValues.value, dTokentransferAmount.toString());
+            }
+        );
+
+        await tester.runTest(
+            `${contractName} balance is reduced by expected amount`,
+            DToken,
+            'balanceOf',
+            'call',
+            [tester.address],
+            true,
+            value => {
+                assert.strictEqual(value, leftOverBalance.toString())
             }
         );
 
@@ -1004,32 +1018,20 @@ async function runAllTests(web3, context, contractName, contract) {
             },
         );
 
-        // await tester.runTest(
-        //     `${contractName} exchange rate can be retrieved`,
-        //     DToken,
-        //     'exchangeRateCurrent',
-        //     'call',
-        //     [],
-        //     true,
-        //     value => {
-        //         dTokenExchangeRate = web3.utils.toBN(value)
-        //     }
-        // );
+        const leftOverUnderlying = initialUnderlyingAmount.sub(underlyingAmountTransfered);
 
-        // const leftOverUnderlying = initialUnderlyingAmount.sub(underlyingAmountTransfered);
-
-        // await tester.runTest(
-        //     `Check transfer sender has correct balance`,
-        //     DToken,
-        //     'balanceOfUnderlying',
-        //     'call',
-        //     [tester.address],
-        //     true,
-        //     value => {
-        //         console.log({value});
-        //         assert.strictEqual(value, leftOverUnderlying.toString());
-        //     },
-        // );
+        await tester.runTest(
+            `Check transfer sender has correct balance`,
+            DToken,
+            'balanceOfUnderlying',
+            'call',
+            [tester.address],
+            true,
+            value => {
+                console.log({value});
+                assert.strictEqual(value, leftOverUnderlying.toString());
+            },
+        );
 
         await tester.revertToSnapShot(snapshotId);
     }
