@@ -880,6 +880,135 @@ async function runAllTests(web3, context, contractName, contract) {
         // TODO: total supply and account balance, dToken and underlying
     }
 
+    async function testMintViaCToken() {
+        let currentCTokenAccountBalance;
+        let currentCTokenExchangeRate;
+
+        await tester.runTest(
+            `Get ${cTokenSymbols[contractName]} exchange rate`,
+            CToken,
+            'exchangeRateCurrent',
+            'call',
+            [],
+            true,
+            value => {
+                currentCTokenExchangeRate = web3.utils.toBN(value)
+            }
+        );
+        await tester.runTest(
+            `${tokenSymbols[contractName]} account balance can be retrieved prior to redeeming`,
+            CToken,
+            'balanceOf',
+            'call',
+            [tester.address],
+            true,
+            value => {
+                currentCTokenAccountBalance = web3.utils.toBN(value)
+            }
+        );
+
+        const cTokenToSupply = currentCTokenAccountBalance;
+
+        await tester.runTest(
+            `${contractName} cannot mint dTokens via cTokens without prior approval`,
+            DToken,
+            'mintViaCToken',
+            'send',
+            [cTokenToSupply.toString()],
+            false
+        );
+
+        await tester.runTest(
+            `${cTokenSymbols[contractName]} can approve ${contractName} in order to mint dTokens`,
+            CToken,
+            'approve',
+            'send',
+            [DToken.options.address, constants.FULL_APPROVAL]
+        );
+
+        [
+            storedDTokenExchangeRate,
+            storedCTokenExchangeRate,
+            blockNumber
+        ] = await prepareToValidateAccrual(web3, DToken);
+
+        await tester.runTest(
+            `${contractName} can mint dTokens with cTokens`,
+            DToken,
+            'mintViaCToken',
+            'send',
+            [cTokenToSupply.toString()],
+            true,
+            receipt => {
+                const events = tester.getEvents(receipt, contractNames);
+
+                assert.strictEqual(events.length, 4);
+
+                [dTokenExchangeRate, cTokenExchangeRate] = validateDTokenAccrueEvent(
+                    events, 0, contractName, web3, tester, storedDTokenExchangeRate, storedCTokenExchangeRate
+                );
+
+                const cTokenTransferEvent = events[1];
+                const dTokenMintEvent = events[2];
+                const dTokenTransferEvent = events[3];
+
+                // Validate cToken transfer
+                assert.strictEqual(
+                    cTokenTransferEvent.address,
+                    cTokenSymbols[contractName].toUpperCase()
+                );
+                assert.strictEqual(cTokenTransferEvent.eventName, 'Transfer');
+
+                const { returnValues: cTokenTransferReturnValues } = cTokenTransferEvent;
+
+                assert.strictEqual(
+                    cTokenTransferReturnValues.from, tester.address
+                );
+                assert.strictEqual(
+                    cTokenTransferReturnValues.to, DToken.options.address
+                );
+                assert.strictEqual(
+                    cTokenTransferReturnValues.value,
+                    cTokenToSupply.toString()
+                );
+
+                // Validate dToken mint
+                assert.strictEqual(
+                    dTokenMintEvent.address,
+                    tokenSymbols[contractName].toUpperCase()
+                );
+                assert.strictEqual(dTokenMintEvent.eventName, 'Mint');
+
+                const { returnValues: dTokenMintReturnValues } = dTokenMintEvent;
+
+                const mintTokens = (
+                    cTokenToSupply.mul(cTokenExchangeRate)
+                ).div(tester.SCALING_FACTOR);
+
+                const mintAmount = (
+                    mintTokens.mul(tester.SCALING_FACTOR)
+                ).div(dTokenExchangeRate);
+
+                assert.strictEqual(dTokenMintReturnValues.minter, tester.address);
+                assert.strictEqual(dTokenMintReturnValues.mintTokens, mintTokens.toString());
+                assert.strictEqual(dTokenMintReturnValues.mintAmount, mintAmount.toString());
+
+                // Validate dToken transfer
+                assert.strictEqual(
+                    dTokenTransferEvent.address,
+                    tokenSymbols[contractName].toUpperCase()
+                );
+                assert.strictEqual(dTokenTransferEvent.eventName, 'Transfer');
+
+                const { returnValues: dTokenTransferReturnValues } = dTokenTransferEvent;
+
+                assert.strictEqual(dTokenTransferReturnValues.value, mintAmount.toString());
+                assert.strictEqual(dTokenTransferReturnValues.from, constants.NULL_ADDRESS);
+                assert.strictEqual(dTokenTransferReturnValues.to, tester.address);
+            }
+        )
+    }
+
     async function testTransfer() {
         const snapshot = await tester.takeSnapshot();
         const { result: snapshotId } = snapshot;
@@ -1568,6 +1697,7 @@ async function runAllTests(web3, context, contractName, contract) {
 
     await testMint();
     await testRedeemToCToken();
+    await testMintViaCToken();
     await testTransfer();
     await testTransferFrom();
     await testAllowance();
