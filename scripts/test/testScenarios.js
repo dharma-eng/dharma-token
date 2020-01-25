@@ -813,7 +813,6 @@ async function runAllTests(web3, context, contractName, contract) {
             true,
             value => {
                 assert.strictEqual(value, dTokenSurplus.toString())
-                console.log({value});
                 currentSurplus = web3.utils.toBN(value)
             }
         );
@@ -835,8 +834,6 @@ async function runAllTests(web3, context, contractName, contract) {
             true,
             receipt => {
                 const events = tester.getEvents(receipt, contractNames);
-
-                console.log(JSON.stringify(events, null, 2));
 
                 validateCTokenInterestAccrualEvents(
                     events, 0, cTokenSymbols[contractName]
