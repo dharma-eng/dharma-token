@@ -1130,7 +1130,7 @@ async function runAllTests(web3, context, contractName, contract) {
         let dTokenToBurn;
         let cTokenToReceive;
         await tester.runTest(
-            `${contractName} can redeem dTokens with underlying`,
+            `${contractName} can redeem dTokens for underlying using redeemUnderlying`,
             DToken,
             'redeemUnderlying',
             'send',
@@ -1147,21 +1147,83 @@ async function runAllTests(web3, context, contractName, contract) {
                     events, 0, cTokenSymbols[contractName]
                 );
 
-                const underlyingTransferEvent = events[extraEvents];
+                if (contractName === 'Dharma Dai') {
+                	assert.strictEqual(events[3].address, 'MKR-VAT')
+                	assert.strictEqual(events[3].returnValues.caller, 'MKR-POT')
 
+                	assert.strictEqual(events[4].address, 'MKR-POT')
+                	assert.strictEqual(events[4].returnValues.caller, 'CDAI')
+
+                	assert.strictEqual(events[5].address, 'MKR-VAT')
+                	assert.strictEqual(events[5].returnValues.caller, 'CDAI')
+
+                	// Dai redeemed from cDai is "minted" to the dDai contract
+                	assert.strictEqual(events[6].address, 'DAI')
+                	assert.strictEqual(events[6].eventName, 'Transfer')
+                	assert.strictEqual(
+                		events[6].returnValues.from, constants.NULL_ADDRESS
+                	)
+                	assert.strictEqual(
+                		events[6].returnValues.to, DToken.options.address
+                	)
+	                assert.strictEqual(
+	                    events[6].returnValues.value,
+	                    underlyingToReceive.toString()
+	                );
+
+                	assert.strictEqual(events[7].address, 'MKR-DAI-JOIN')
+                	assert.strictEqual(events[7].returnValues.caller, 'CDAI')	                
+
+                } else {
+                	// USDC redeemed from cUSDC is sent from cUSDC to dUSDC
+                	assert.strictEqual(events[1].address, 'USDC')
+                	assert.strictEqual(events[1].eventName, 'Transfer')
+                	assert.strictEqual(
+                		events[1].returnValues.from, CToken.options.address
+                	)
+                	assert.strictEqual(
+                		events[1].returnValues.to, DToken.options.address
+                	)
+	                assert.strictEqual(
+	                    events[1].returnValues.value,
+	                    underlyingToReceive.toString()
+	                );
+                }
+
+                // cTokens are sent from dToken to cToken (TODO: validate)
+                const cTokenTransferEvent = events[2 + extraEvents];
+                const { returnValues: cTokenTransferEventReturnValues } = cTokenTransferEvent;
+
+                // cToken Redeem event (TODO: validate)
+                const cTokenRedeemEvent = events[3 + extraEvents];
+                const { returnValues: cTokenRedeemEventReturnValues } = cTokenRedeemEvent;
+
+                // validate dToken Accrue event
+                [dTokenExchangeRate, cTokenExchangeRate] = validateDTokenAccrueEvent(
+                    events, 4 + extraEvents, contractName, web3, tester, storedDTokenExchangeRate, storedCTokenExchangeRate
+                );
+
+                // dToken "burn" transfer to null address (TODO: validate)
+                const dTokenTransferEvent = events[5 + extraEvents];
+                const { returnValues: dTokenTransferEventReturnValues } = dTokenTransferEvent;
+
+                // dToken Redeem event (TODO: validate)
+                const dTokenRedeemEvent = events[6 + extraEvents];
+                const { returnValues: dTokenRedeemEventReturnValues } = dTokenRedeemEvent;
+
+                // last event: underlying transfer from dToken to caller
+                const underlyingTransferEvent = events[7 + extraEvents]
                 const { returnValues: underlyingTransferReturnValues } = underlyingTransferEvent;
-
-                // Validate dToken "burn" transfer to null address
                 assert.strictEqual(
                     underlyingTransferEvent.address,
                     underlyingSymbols[contractName].toUpperCase()
                 );
                 assert.strictEqual(underlyingTransferEvent.eventName, 'Transfer');
                 assert.strictEqual(
-                    underlyingTransferReturnValues.from, constants.NULL_ADDRESS
+                    underlyingTransferReturnValues.from, DToken.options.address
                 );
                 assert.strictEqual(
-                    underlyingTransferReturnValues.to, DToken.options.address
+                    underlyingTransferReturnValues.to, tester.address
                 );
                 assert.strictEqual(
                     underlyingTransferReturnValues.value,
@@ -2501,6 +2563,22 @@ async function runAllTests(web3, context, contractName, contract) {
     }
 
     async function testSpreadPerBlock() {
+	    await tester.runTest(
+	        `Accrue ${cTokenSymbols[contractName]} interest`,
+	        CToken,
+	        'accrueInterest',
+	        'send',
+	        [],
+	        true,
+	        receipt => {
+	            const events = tester.getEvents(receipt, contractNames)
+
+	            validateCTokenInterestAccrualEvents(
+	                events, 0, cTokenSymbols[contractName]
+	            )
+	        }
+	    )
+
         const snapshot = await tester.takeSnapshot();
         const { result: snapshotId } = snapshot;
         await tester.runTest(
