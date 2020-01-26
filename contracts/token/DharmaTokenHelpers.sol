@@ -1,6 +1,7 @@
 pragma solidity 0.5.11;
 
 import "../../interfaces/CTokenInterface.sol";
+import "./DharmaTokenOverrides.sol";
 
 
 /**
@@ -9,7 +10,7 @@ import "../../interfaces/CTokenInterface.sol";
  * @notice A collection of constants and internal pure functions used by Dharma
  * Tokens.
  */
- contract DharmaTokenHelpers {
+contract DharmaTokenHelpers is DharmaTokenOverrides {
   uint8 internal constant _DECIMALS = 8; // matches cToken decimals
   uint256 internal constant _SCALING_FACTOR = 1e18;
   uint256 internal constant _HALF_OF_SCALING_FACTOR = 5e17;
@@ -27,21 +28,19 @@ import "../../interfaces/CTokenInterface.sol";
    * @param data bytes The data provided by the returned or reverted call.
    */
   function _checkCompoundInteraction(
-    bytes4 functionSelector, bool ok, bytes memory data, string memory cTokenSymbol
+    bytes4 functionSelector, bool ok, bytes memory data
   ) internal pure {
     CTokenInterface cToken;
-    // Determine if something went wrong with the attempt.
     if (ok) {
       if (
         functionSelector == cToken.transfer.selector ||
         functionSelector == cToken.transferFrom.selector
       ) {
         require(
-          abi.decode(data, (bool)),
-          string(
+          abi.decode(data, (bool)), string(
             abi.encodePacked(
               "Compound ",
-              cTokenSymbol,
+              _getCTokenSymbol(),
               " contract returned false on calling ",
               _getFunctionName(functionSelector),
               "."
@@ -55,7 +54,7 @@ import "../../interfaces/CTokenInterface.sol";
             string(
               abi.encodePacked(
                 "Compound ",
-                cTokenSymbol,
+                _getCTokenSymbol(),
                 " contract returned error code ",
                 uint8((compoundError / 10) + 48),
                 uint8((compoundError % 10) + 48),
@@ -72,7 +71,7 @@ import "../../interfaces/CTokenInterface.sol";
         string(
           abi.encodePacked(
             "Compound ",
-            cTokenSymbol,
+            _getCTokenSymbol(),
             " contract reverted while attempting to call ",
             _getFunctionName(functionSelector),
             ": ",
@@ -94,17 +93,17 @@ import "../../interfaces/CTokenInterface.sol";
   ) internal pure returns (string memory functionName) {
     CTokenInterface cToken;
     if (functionSelector == cToken.mint.selector) {
-      functionName = 'mint';
+      functionName = "mint";
     } else if (functionSelector == cToken.redeemUnderlying.selector) {
-      functionName = 'redeemUnderlying';
+      functionName = "redeemUnderlying";
     } else if (functionSelector == cToken.transferFrom.selector) {
-      functionName = 'transferFrom';
+      functionName = "transferFrom";
     } else if (functionSelector == cToken.transfer.selector) {
-      functionName = 'transfer';
+      functionName = "transfer";
     } else if (functionSelector == cToken.accrueInterest.selector) {
-      functionName = 'accrueInterest';
+      functionName = "accrueInterest";
     } else {
-      functionName = 'an unknown function';
+      functionName = "an unknown function";
     }
   }
 
@@ -140,6 +139,19 @@ import "../../interfaces/CTokenInterface.sol";
   }
 
   /**
+   * @notice Internal pure function to construct a failure message string for
+   * the revert reason on transfers of underlying tokens that do not succeed.
+   * @return The failure message.
+   */
+  function _getTransferFailureMessage() internal pure returns (
+    string memory message
+  ) {
+    message = string(
+      abi.encodePacked(_getUnderlyingName(), " transfer failed.")
+    );
+  }
+
+  /**
    * @notice Internal pure function to convert a uint256 to a uint112, reverting
    * if the conversion would cause an overflow.
    * @param input uint256 The unsigned integer to convert.
@@ -149,4 +161,4 @@ import "../../interfaces/CTokenInterface.sol";
     require(input <= _MAX_UINT_112, "Overflow on conversion to uint112.");
     output = uint112(input);
   }
- }
+}

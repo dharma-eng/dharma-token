@@ -18,6 +18,7 @@
     ],
     "arg-overflow": "off",
     "security/no-inline-assembly": "off",
-    "security/no-low-level-calls": "off"
+    "security/no-low-level-calls": "off",
+    "lbrace": "off"
   }
 }

@@ -1,9 +1,9 @@
 {
-  "extends": "solhint:default",
+  "extends": "solhint:all",
   "rules": {
-    "indent": "off",
-    "no-inline-assembly": "off",
+    "indent": 2,
+    "mark-callable-contracts": "off",
     "avoid-low-level-calls": "off",
-    "function-max-lines": 70
+    "reason-string": ["warn", {"maxLength": 200}]
   }
 }

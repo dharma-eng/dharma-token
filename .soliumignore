@@ -1,2 +1,3 @@
 # skip
 node_modules
+contracts/Migrations.sol
