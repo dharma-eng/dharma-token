@@ -726,6 +726,187 @@ async function runAllTests(web3, context, contractName, contract) {
         )
     }
 
+    async function testPullSurplusAfterMint() {
+        const snapshot = await tester.takeSnapshot();
+        const { result: snapshotId } = snapshot;
+
+        let dTokenSupply;
+        let cTokenBalance;
+
+        let dTokenUnderlying;
+        let cTokenUnderlying;
+
+        let cTokenExchangeRate;
+        let dTokenExchangeRate;
+
+        let currentSurplus;
+
+        await tester.runTest(
+            `${tokenSymbols[contractName]} get current exchange rate`,
+            DToken,
+            'exchangeRateCurrent',
+            'call',
+            [],
+            true,
+            value => {
+                dTokenExchangeRate = web3.utils.toBN(value)
+            }
+        );
+
+        await tester.runTest(
+            `${tokenSymbols[contractName]} get total supply`,
+            DToken,
+            'totalSupply',
+            'call',
+            [],
+            true,
+            value => {
+                dTokenSupply = web3.utils.toBN(value)
+            }
+        );
+
+        dTokenUnderlying = (
+            dTokenSupply.mul(dTokenExchangeRate)
+        ).div(tester.SCALING_FACTOR).add(tester.ONE);
+
+
+        await tester.runTest(
+            `${cTokenSymbols[contractName]} get balance of DToken contract`,
+            CToken,
+            'balanceOf',
+            'call',
+            [DToken.options.address],
+            true,
+            value => {
+                cTokenBalance = web3.utils.toBN(value)
+            }
+        );
+
+        await tester.runTest(
+            `${cTokenSymbols[contractName]} get current exchange rate`,
+            CToken,
+            'exchangeRateCurrent',
+            'call',
+            [],
+            true,
+            value => {
+                cTokenExchangeRate = web3.utils.toBN(value)
+            }
+        );
+
+        cTokenUnderlying = (
+            cTokenBalance.mul(cTokenExchangeRate)
+        ).div(tester.SCALING_FACTOR);
+
+        const underlyingSurplus = cTokenUnderlying.gt(dTokenUnderlying) ? cTokenUnderlying.sub(dTokenUnderlying) : tester.ZERO;
+
+        dTokenSurplus = (
+            underlyingSurplus.mul(tester.SCALING_FACTOR)
+        ).div(cTokenExchangeRate);
+
+        await tester.runTest(
+            `${tokenSymbols[contractName]} get current surplus`,
+            DToken,
+            'getSurplus',
+            'call',
+            [],
+            true,
+            value => {
+                assert.strictEqual(value, dTokenSurplus.toString())
+                currentSurplus = web3.utils.toBN(value)
+            }
+        );
+
+        let storedDTokenExchangeRate;
+        let storedCTokenExchangeRate;
+        [
+            storedDTokenExchangeRate,
+            storedCTokenExchangeRate,
+            blockNumber
+        ] = await prepareToValidateAccrual(web3, DToken);
+
+        await tester.runTest(
+            `${cTokenSymbols[contractName]} pull surplus`,
+            DToken,
+            'pullSurplus',
+            'send',
+            [],
+            true,
+            receipt => {
+                const events = tester.getEvents(receipt, contractNames);
+
+                validateCTokenInterestAccrualEvents(
+                    events, 0, cTokenSymbols[contractName]
+                );
+
+
+                let dTokenAccrueInterestEventIndex = contractName === 'Dharma Dai' ? 3 : 1;
+                let cTokenTransferEventIndex = contractName === 'Dharma Dai' ? 4 : 2;
+                let dTokenCollectSurplusEventIndex = contractName === 'Dharma Dai' ? 5 : 3;
+
+                [dTokenExchangeRate, cTokenExchangeRate] = validateDTokenAccrueEvent(
+                    events, dTokenAccrueInterestEventIndex, contractName, web3, tester, storedDTokenExchangeRate, storedCTokenExchangeRate
+                );
+
+
+                const cTokenTransferEvent = events[cTokenTransferEventIndex];
+                const dTokenCollectSurplusEvent = events[dTokenCollectSurplusEventIndex];
+
+
+                const VaultAddress = "0x7e4A8391C728fEd9069B2962699AB416628B19Fa";
+
+                const cTokenEquivalent = (
+                    currentSurplus.mul(tester.SCALING_FACTOR)
+                ).div(cTokenExchangeRate);
+
+                const { returnValues: cTokenTransferReturnValues } = cTokenTransferEvent;
+
+                assert.strictEqual(
+                    cTokenTransferEvent.address, cTokenSymbols[contractName].toUpperCase()
+                );
+                assert.strictEqual(cTokenTransferEvent.eventName, 'Transfer');
+                assert.strictEqual(
+                    cTokenTransferReturnValues.from, DToken.options.address
+                );
+                assert.strictEqual(
+                    cTokenTransferReturnValues.to, VaultAddress
+                );
+                // assert.strictEqual(
+                //     cTokenTransferReturnValues.value,
+                //     cTokenEquivalent.toString()
+                // );
+
+                const { returnValues: dTokenCollectSurplusReturnValues } = dTokenCollectSurplusEvent;
+
+                assert.strictEqual(
+                    dTokenCollectSurplusEvent.address, tokenSymbols[contractName].toUpperCase()
+                );
+                assert.strictEqual(dTokenCollectSurplusEvent.eventName, 'CollectSurplus');
+                // assert.strictEqual(
+                //     dTokenCollectSurplusReturnValues.surplusAmount, '0'
+                // );
+                // assert.strictEqual(
+                //     dTokenCollectSurplusReturnValues.surplusCTokens, '0'
+                // );
+
+            }
+        );
+
+        await tester.runTest(
+            `${tokenSymbols[contractName]} current surplus is zero after pull surplus`,
+            DToken,
+            'getSurplus',
+            'call',
+            [],
+            true,
+            value => {
+                assert.strictEqual(value, '0')
+            }
+        );
+
+        await tester.revertToSnapShot(snapshotId);
+    }
+
     async function testRedeem() {
         const snapshot = await tester.takeSnapshot();
         const { result: snapshotId } = snapshot;
@@ -959,8 +1140,6 @@ async function runAllTests(web3, context, contractName, contract) {
                 const extraEvents = contractName === 'Dharma Dai' ? 6 : 0
 
                 const events = tester.getEvents(receipt, contractNames);
-
-                console.log(JSON.stringify(events, null, 2));
 
                 assert.strictEqual(events.length, 8 + extraEvents);
 
@@ -2439,8 +2618,57 @@ async function runAllTests(web3, context, contractName, contract) {
 
     }
 
+    async function testBlockAccrual() {
+        const snapshot = await tester.takeSnapshot();
+        const { result: snapshotId } = snapshot;
+
+        const currentBlockNumber = (await web3.eth.getBlock('latest')).number;
+
+        let currentDTokenAccountBalance;
+
+        await tester.runTest(
+            `${tokenSymbols[contractName]} account balance can be retrieved prior to redeeming`,
+            DToken,
+            'balanceOf',
+            'call',
+            [tester.address],
+            true,
+            value => {
+                currentDTokenAccountBalance = web3.utils.toBN(value)
+            }
+        );
+
+        const dTokensToBurn = currentDTokenAccountBalance.div(web3.utils.toBN('2'));
+
+        await tester.runTest(
+            `${contractName} redeem to trigger accrual`,
+            DToken,
+            'redeem',
+            'send',
+            [dTokensToBurn.toString()],
+            true,
+        );
+
+        const latestAccrualBlock = currentBlockNumber + 1;
+
+        await tester.runTest(
+            `${contractName} accrualBlockNumber is set correctly`,
+            DToken,
+            'accrualBlockNumber',
+            'call',
+            [],
+            true,
+            value => {
+               assert.strictEqual(value, latestAccrualBlock.toString());
+            }
+        );
+
+        await tester.revertToSnapShot(snapshotId);
+    }
+
 
     await testMint();
+    await testPullSurplusAfterMint();
     await testRedeem();
     await testRedeemUnderlying();
     await testRedeemToCToken();
@@ -2454,6 +2682,7 @@ async function runAllTests(web3, context, contractName, contract) {
     await testApprove();
     await testSpreadPerBlock();
     await testRequireNonNull();
+    await testBlockAccrual();
 
 
     console.log(
