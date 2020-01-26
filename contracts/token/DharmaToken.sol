@@ -88,7 +88,7 @@ contract DharmaToken is ERC20Interface, DTokenInterface, DharmaTokenHelpers {
     _checkCompoundInteraction(cToken.mint.selector, ok, data);
 
     // Accrue after the Compound mint to avoid duplicating accrual calculations.
-    (uint256 dTokenExchangeRate, ) = _accrue();
+    (uint256 dTokenExchangeRate, ) = _accrue(false);
 
     // Determine the dTokens to mint for the underlying using the exchange rate.
     dTokensMinted = (
@@ -121,7 +121,7 @@ contract DharmaToken is ERC20Interface, DTokenInterface, DharmaTokenHelpers {
     _checkCompoundInteraction(cToken.transferFrom.selector, ok, data);
 
     // Accrue interest and retrieve current cToken and dToken exchange rates.
-    (uint256 dTokenExchangeRate, uint256 cTokenExchangeRate) = _accrue();
+    (uint256 dTokenExchangeRate, uint256 cTokenExchangeRate) = _accrue(true);
 
     // Determine the underlying equivalent of the supplied cToken amount.
     uint256 underlyingEquivalent = cTokensToSupply.mul(
@@ -154,7 +154,7 @@ contract DharmaToken is ERC20Interface, DTokenInterface, DharmaTokenHelpers {
     CTokenInterface cToken = CTokenInterface(_getCToken());
 
     // Accrue interest and retrieve the current dToken exchange rate.
-    (uint256 dTokenExchangeRate, ) = _accrue();
+    (uint256 dTokenExchangeRate, ) = _accrue(true);
 
     // Determine the underlying token value of the dTokens to be burned.
     underlyingReceived = dTokensToBurn.mul(
@@ -191,7 +191,7 @@ contract DharmaToken is ERC20Interface, DTokenInterface, DharmaTokenHelpers {
     CTokenInterface cToken = CTokenInterface(_getCToken());
 
     // Accrue interest and retrieve current cToken and dToken exchange rates.
-    (uint256 dTokenExchangeRate, uint256 cTokenExchangeRate) = _accrue();
+    (uint256 dTokenExchangeRate, uint256 cTokenExchangeRate) = _accrue(true);
 
     // Determine the underlying token value of the dTokens to be burned.
     uint256 underlyingEquivalent = dTokensToBurn.mul(
@@ -237,7 +237,7 @@ contract DharmaToken is ERC20Interface, DTokenInterface, DharmaTokenHelpers {
     _checkCompoundInteraction(cToken.redeemUnderlying.selector, ok, data);
 
     // Accrue after the Compound redeem to avoid duplicating calculations.
-    (uint256 dTokenExchangeRate, ) = _accrue();
+    (uint256 dTokenExchangeRate, ) = _accrue(false);
 
     // Determine the dTokens to redeem using the exchange rate.
     dTokensBurned = (
@@ -269,7 +269,7 @@ contract DharmaToken is ERC20Interface, DTokenInterface, DharmaTokenHelpers {
     CTokenInterface cToken = CTokenInterface(_getCToken());
 
     // Accrue interest and retrieve current cToken and dToken exchange rates.
-    (uint256 dTokenExchangeRate, uint256 cTokenExchangeRate) = _accrue();
+    (uint256 dTokenExchangeRate, uint256 cTokenExchangeRate) = _accrue(true);
 
     // Determine the dTokens to redeem using the exchange rate.
     dTokensBurned = (
@@ -308,8 +308,8 @@ contract DharmaToken is ERC20Interface, DTokenInterface, DharmaTokenHelpers {
     ));
     _checkCompoundInteraction(cToken.accrueInterest.selector, ok, data);
 
-    // Accrue interest on the dToken.
-    _accrue();
+    // Accrue interest on the dToken, reusing the stored cToken exchange rate.
+    _accrue(false);
 
     // Determine cToken surplus in underlying (cToken value - dToken value).
     uint256 underlyingSurplus;
@@ -332,7 +332,7 @@ contract DharmaToken is ERC20Interface, DTokenInterface, DharmaTokenHelpers {
    */
   function accrueInterest() external {
     // Accrue interest on the dToken.
-    _accrue();
+    _accrue(true);
   }
 
   /**
@@ -360,7 +360,7 @@ contract DharmaToken is ERC20Interface, DTokenInterface, DharmaTokenHelpers {
     address recipient, uint256 underlyingEquivalentAmount
   ) external returns (bool success) {
     // Accrue interest and retrieve the current dToken exchange rate.
-    (uint256 dTokenExchangeRate, ) = _accrue();
+    (uint256 dTokenExchangeRate, ) = _accrue(true);
 
     // Determine the dToken amount to transfer using the exchange rate.
     uint256 dTokenAmount = (
@@ -419,7 +419,7 @@ contract DharmaToken is ERC20Interface, DTokenInterface, DharmaTokenHelpers {
     address sender, address recipient, uint256 underlyingEquivalentAmount
   ) external returns (bool success) {
     // Accrue interest and retrieve the current dToken exchange rate.
-    (uint256 dTokenExchangeRate, ) = _accrue();
+    (uint256 dTokenExchangeRate, ) = _accrue(true);
 
     // Determine the dTokens to transfer using the exchange rate.
     uint256 dTokenAmount = (
@@ -481,7 +481,7 @@ contract DharmaToken is ERC20Interface, DTokenInterface, DharmaTokenHelpers {
   function totalSupplyUnderlying() external view returns (
     uint256 dTokenTotalSupplyInUnderlying
   ) {
-    (uint256 dTokenExchangeRate, ,) = _getAccruedInterest();
+    (uint256 dTokenExchangeRate, ,) = _getExchangeRates(true);
 
     // Determine total value of all issued dTokens, denominated as underlying.
     dTokenTotalSupplyInUnderlying = (
@@ -508,7 +508,7 @@ contract DharmaToken is ERC20Interface, DTokenInterface, DharmaTokenHelpers {
     address account
   ) external view returns (uint256 underlyingBalance) {
     // Get most recent dToken exchange rate by determining accrued interest.
-    (uint256 dTokenExchangeRate, ,) = _getAccruedInterest();
+    (uint256 dTokenExchangeRate, ,) = _getExchangeRates(true);
 
     // Convert account balance to underlying equivalent using the exchange rate.
     underlyingBalance = _balances[account].mul(
@@ -538,7 +538,7 @@ contract DharmaToken is ERC20Interface, DTokenInterface, DharmaTokenHelpers {
     uint256 dTokenExchangeRate
   ) {
     // Get most recent dToken exchange rate by determining accrued interest.
-    (dTokenExchangeRate, ,) = _getAccruedInterest();
+    (dTokenExchangeRate, ,) = _getExchangeRates(true);
   }
 
   /**
@@ -647,16 +647,23 @@ contract DharmaToken is ERC20Interface, DTokenInterface, DharmaTokenHelpers {
 
   /**
    * @notice Private function to trigger accrual and to update the dToken and
-   * cToken exchange rates in storage if necessary.
+   * cToken exchange rates in storage if necessary. The `compute` argument can
+   * be set to false if an accrual has already taken place on the cToken before
+   * calling this function.
+   * @param compute bool A flag to indicate whether the cToken exchange rate
+   * needs to be computed - if false, it will simply be read from storage on the
+   * cToken in question.
    * @return The current dToken and cToken exchange rates.
    */
-  function _accrue() private returns (
+  function _accrue(bool compute) private returns (
     uint256 dTokenExchangeRate, uint256 cTokenExchangeRate
   ) {
-    bool accrued;
-    (dTokenExchangeRate, cTokenExchangeRate, accrued) = _getAccruedInterest();
+    bool alreadyAccrued;
+    (
+      dTokenExchangeRate, cTokenExchangeRate, alreadyAccrued
+    ) = _getExchangeRates(compute);
 
-    if (!accrued) {
+    if (!alreadyAccrued) {
       // Update storage with dToken + cToken exchange rates as of current block.
       AccrualIndex storage accrualIndex = _accrualIndex;
       accrualIndex.dTokenExchangeRate = _safeUint112(dTokenExchangeRate);
@@ -734,12 +741,17 @@ contract DharmaToken is ERC20Interface, DTokenInterface, DharmaTokenHelpers {
 
   /**
    * @notice Private view function to get the latest dToken and cToken exchange
-   * rates and provide the value for each.
+   * rates and provide the value for each. The `compute` argument can be set to
+   * false if an accrual has already taken place on the cToken before calling
+   * this function.
+   * @param compute bool A flag to indicate whether the cToken exchange rate
+   * needs to be computed - if false, it will simply be read from storage on the
+   * cToken in question.
    * @return The dToken and cToken exchange rate, as well as a boolean
    * indicating if interest accrual has been processed already or needs to be
    * calculated and placed in storage.
    */
-  function _getAccruedInterest() private view returns (
+  function _getExchangeRates(bool compute) private view returns (
     uint256 dTokenExchangeRate, uint256 cTokenExchangeRate, bool fullyAccrued
   ) {
     // Get the stored accrual block and dToken + cToken exhange rates.
@@ -748,14 +760,21 @@ contract DharmaToken is ERC20Interface, DTokenInterface, DharmaTokenHelpers {
     uint256 storedCTokenExchangeRate = uint256(accrualIndex.cTokenExchangeRate);
     uint256 accrualBlock = uint256(accrualIndex.block);
 
-    // Get current cToken exchange rate - inheriting contract overrides this.
-    (cTokenExchangeRate,) = _getCurrentCTokenRates();
-
-    // Only recompute dToken exchange rate if accrual has not already occurred.
+    // Use stored exchange rates if an accrual has already occurred this block.
     fullyAccrued = (accrualBlock == block.number);
     if (fullyAccrued) {
       dTokenExchangeRate = storedDTokenExchangeRate;
+      cTokenExchangeRate = storedCTokenExchangeRate;
     } else {
+      // Only compute cToken exchange rate if it has not accrued this block.
+      if (compute) {
+        // Get current cToken exchange rate; inheriting contract overrides this.
+        (cTokenExchangeRate,) = _getCurrentCTokenRates();
+      } else {
+        // Otherwise, get the stored cToken exchange rate.
+        cTokenExchangeRate = CTokenInterface(_getCToken()).exchangeRateStored();
+      }
+
       // Determine the cToken interest earned during the period.
       uint256 cTokenInterest = (
         (cTokenExchangeRate.mul(_SCALING_FACTOR)).div(storedCTokenExchangeRate)
@@ -780,7 +799,7 @@ contract DharmaToken is ERC20Interface, DTokenInterface, DharmaTokenHelpers {
     // Instantiate the interface for the backing cToken.
     CTokenInterface cToken = CTokenInterface(_getCToken());
 
-    (uint256 dTokenExchangeRate, uint256 cTokenExchangeRate,) = _getAccruedInterest();
+    (uint256 dTokenExchangeRate, uint256 cTokenExchangeRate,) = _getExchangeRates(true);
 
     // Determine value of all issued dTokens in the underlying, rounded up.
     uint256 dTokenUnderlying = (
