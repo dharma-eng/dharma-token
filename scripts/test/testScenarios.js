@@ -2831,18 +2831,18 @@ async function runAllTests(web3, context, contractName, contract) {
     await testPullSurplusAfterMint();
     await testRedeem();
     await testRedeemUnderlying();
-    // await testRedeemToCToken();
-    // await testRedeemUnderlyingToCToken();
-    // await testMintViaCToken();
-    // await testTransfer();
-    // await testTransferFrom();
-    // await testAllowance();
-    // await testTransferUnderlying();
-    // await testTransferUnderlyingFrom();
-    // await testApprove();
-    // await testSpreadPerBlock();
-    // await testRequireNonNull();
-    // await testBlockAccrual();
+    await testRedeemToCToken();
+    await testRedeemUnderlyingToCToken();
+    await testMintViaCToken();
+    await testTransfer();
+    await testTransferFrom();
+    await testAllowance();
+    await testTransferUnderlying();
+    await testTransferUnderlyingFrom();
+    await testApprove();
+    await testSpreadPerBlock();
+    await testRequireNonNull();
+    await testBlockAccrual();
 
 
     console.log(
