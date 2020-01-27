@@ -26,8 +26,6 @@ const cTokenSymbols = {
 
 const DTokenDecimals = 8;
 
-const SECONDS_IN_DAY = 86400;
-
 const validateCTokenInterestAccrualEvents = (
     parsedEvents, eventIndex, cTokenSymbol
 ) => {
