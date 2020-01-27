@@ -119,15 +119,6 @@ async function runAllTests(web3, context, contractName, contract) {
     const tester = new Tester(web3, context);
     await tester.init();
 
-    // Test snapshot and advance (time/block) functions
-    await testSnapshot(web3, tester);
-    await testAdvanceTimeAndBlock(web3, tester);
-
-    // Take initial snapshot to run function tests, and revert before starting scenarios.
-    const initialSnapshot = await tester.takeSnapshot();
-    const { result: initialSnapshotId } = initialSnapshot;
-
-
     const DToken = await getOrDeployDTokenContract(contract, tester, contractName);
 
     const CToken = contractName === 'Dharma Dai' ? tester.CDAI : tester.CUSDC;
@@ -146,304 +137,382 @@ async function runAllTests(web3, context, contractName, contract) {
         )
     });
 
-    await testPureFunctions(tester, DToken, CToken, Underlying, contractName, tokenSymbols[contractName]);
-
-    const initialExchangeRates = getExchangeRates(web3);
-
-    let dTokenExchangeRate = initialExchangeRates[contractName];
-    // coverage mines a few blocks prior to reaching this point - skip this test
-    if (context !== 'coverage') {
+    async function testPureFunctions() {
         await tester.runTest(
-            `${contractName} exchange rate starts at ${dTokenExchangeRate.notation}`,
+            `${contractName} gets the initial version correctly`,
+            DToken,
+            'getVersion',
+            'call',
+            [],
+            true,
+            value => {
+                assert.strictEqual(value, '0')
+            }
+        );
+
+        await tester.runTest(
+            `${contractName} gets name correctly`,
+            DToken,
+            'name',
+            'call',
+            [],
+            true,
+            value => {
+                assert.strictEqual(value, contractName)
+            }
+        );
+
+        await tester.runTest(
+            `${contractName} gets symbol correctly`,
+            DToken,
+            'symbol',
+            'call',
+            [],
+            true,
+            value => {
+                assert.strictEqual(value, tokenSymbols[contractName])
+            }
+        );
+
+        await tester.runTest(
+            `${contractName} gets decimals correctly`,
+            DToken,
+            'decimals',
+            'call',
+            [],
+            true,
+            value => {
+                assert.strictEqual(value, DTokenDecimals.toString())
+            }
+        );
+
+        await tester.runTest(
+            `${contractName} gets cToken address correctly`,
+            DToken,
+            'getCToken',
+            'call',
+            [],
+            true,
+            value => {
+                assert.strictEqual(value, CToken.options.address)
+            }
+        );
+
+        await tester.runTest(
+            `${contractName} gets underlying address correctly`,
+            DToken,
+            'getUnderlying',
+            'call',
+            [],
+            true,
+            value => {
+                assert.strictEqual(value, Underlying.options.address)
+            }
+        );
+    }
+
+    async function testInitialExchangeRates() {
+        const initialExchangeRates = getExchangeRates(web3);
+
+        let dTokenExchangeRate = initialExchangeRates[contractName];
+        // coverage mines a few blocks prior to reaching this point - skip this test
+        if (context !== 'coverage') {
+            await tester.runTest(
+                `${contractName} exchange rate starts at ${dTokenExchangeRate.notation}`,
+                DToken,
+                'exchangeRateCurrent',
+                'call',
+                [],
+                true,
+                value => {
+                    assert.strictEqual(value, dTokenExchangeRate.rate.toString())
+                }
+            )
+        }
+    }
+
+    async function testAccrueInterest() {
+        await tester.runTest(
+            `Accrue ${cTokenSymbols[contractName]} interest`,
+            CToken,
+            'accrueInterest',
+            'send',
+            [],
+            true,
+            receipt => {
+                const events = tester.getEvents(receipt, contractNames)
+
+                validateCTokenInterestAccrualEvents(
+                    events, 0, cTokenSymbols[contractName]
+                )
+            }
+        )
+    }
+
+    async function testSupplyRatePerBlock() {
+        let cTokenSupplyRate;
+        await tester.runTest(
+            `${cTokenSymbols[contractName]} supply rate can be retrieved`,
+            CToken,
+            'supplyRatePerBlock',
+            'call',
+            [],
+            true,
+            value => {
+                cTokenSupplyRate = web3.utils.toBN(value)
+            }
+        )
+
+        let dTokenSupplyRate = (cTokenSupplyRate.mul(tester.NINE)).div(tester.TEN)
+        await tester.runTest(
+            `${contractName} supply rate starts at 90% of ${cTokenSymbols[contractName]} supply rate`,
+            DToken,
+            'supplyRatePerBlock',
+            'call',
+            [],
+            true,
+            value => {
+                assert.strictEqual(value, dTokenSupplyRate.toString())
+            }
+        )
+    }
+
+    async function testExchangeRate() {
+        let cTokenExchangeRate;
+        await tester.runTest(
+            `${cTokenSymbols[contractName]} exchange rate can be retrieved`,
+            CToken,
+            'exchangeRateCurrent',
+            'call',
+            [],
+            true,
+            value => {
+                cTokenExchangeRate = web3.utils.toBN(value)
+            }
+        );
+
+        await tester.runTest(
+            `${contractName} exchange rate can be retrieved`,
             DToken,
             'exchangeRateCurrent',
             'call',
             [],
             true,
             value => {
-                assert.strictEqual(value, dTokenExchangeRate.rate.toString())
+                dTokenExchangeRate = web3.utils.toBN(value)
             }
+        );
+    }
+
+    async function testAccrueInterestFromAnyAccount() {
+        [
+            storedDTokenExchangeRate, storedCTokenExchangeRate, blockNumber
+        ] = await prepareToValidateAccrual(web3, DToken)
+
+        let cTokenSupplyRate;
+        await tester.runTest(
+            `${cTokenSymbols[contractName]} supply rate can be retrieved`,
+            CToken,
+            'supplyRatePerBlock',
+            'call',
+            [],
+            true,
+            value => {
+                cTokenSupplyRate = web3.utils.toBN(value)
+            }
+        )
+
+        await tester.runTest(
+            `${contractName} accrueInterest can be triggered correctly from any account`,
+            DToken,
+            'accrueInterest',
+            'send',
+            [],
+            true,
+            receipt => {
+                assert.strictEqual(receipt.blockNumber, blockNumber + 1)
+                const events = tester.getEvents(receipt, contractNames)
+
+                assert.strictEqual(events.length, 1);
+
+                [dTokenExchangeRate, cTokenExchangeRate] = validateDTokenAccrueEvent(
+                    events, 0, contractName, web3, tester, storedDTokenExchangeRate, storedCTokenExchangeRate
+                );
+            },
+            tester.originalAddress
+        );
+
+        await tester.runTest(
+            `${contractName} exchange rate is updated correctly`,
+            DToken,
+            'exchangeRateCurrent',
+            'call',
+            [],
+            true,
+            value => {
+                assert.strictEqual(value, dTokenExchangeRate.toString())
+            }
+        );
+
+        await tester.runTest(
+            `${contractName} supply rate is updated after an accrual`,
+            DToken,
+            'supplyRatePerBlock',
+            'call',
+            [],
+            true,
+            value => {
+                dTokenSupplyRate = value
+            }
+        );
+
+        await tester.runTest(
+            `${cTokenSymbols[contractName]} exchange rate is updated correctly`,
+            CToken,
+            'exchangeRateCurrent',
+            'call',
+            [],
+            true,
+            value => {
+                assert.strictEqual(value, cTokenExchangeRate.toString())
+            }
+        );
+
+        await tester.runTest(
+            `${cTokenSymbols[contractName]} supply rate is unchanged after ${tokenSymbols[contractName]} accrual (as it did not accrue)`,
+            CToken,
+            'supplyRatePerBlock',
+            'call',
+            [],
+            true,
+            value => {
+                assert.strictEqual(value, cTokenSupplyRate.toString())
+            }
+        );
+
+    }
+
+    async function testPullSurplusBeforeMints() {
+        [
+            storedDTokenExchangeRate, storedCTokenExchangeRate, blockNumber
+        ] = await prepareToValidateAccrual(web3, DToken);
+
+        await tester.runTest(
+            `${contractName} can pull surplus of 0 before any tokens are minted`,
+            DToken,
+            'pullSurplus',
+            'send',
+            [],
+            true,
+            receipt => {
+                const events = tester.getEvents(receipt, contractNames);
+
+                const extraEvents = contractName === 'Dharma Dai' ? 2 : 0;
+
+                assert.strictEqual(events.length, 4 + extraEvents);
+
+                const transferEvent = events[2 + extraEvents];
+                const collectSurplusEvent = events[3 + extraEvents];
+
+                // Ensure that cToken accrual is performed correctly
+                validateCTokenInterestAccrualEvents(
+                    events, 0, cTokenSymbols[contractName]
+                );
+
+                // Ensure that dToken accrual is performed correctly
+                [dTokenExchangeRate, cTokenExchangeRate] = validateDTokenAccrueEvent(
+                    events, 1 + extraEvents, contractName, web3, tester, storedDTokenExchangeRate, storedCTokenExchangeRate
+                );
+
+                // Ensure that cToken transfer of 0 tokens is performed correctly
+                assert.strictEqual(
+                    transferEvent.address, cTokenSymbols[contractName].toUpperCase()
+                );
+                assert.strictEqual(transferEvent.eventName, 'Transfer');
+                assert.strictEqual(
+                    transferEvent.returnValues.from, DToken.options.address
+                )
+                assert.strictEqual(
+                    transferEvent.returnValues.to, constants.VAULT_MAINNET_ADDRESS
+                )
+                assert.strictEqual(transferEvent.returnValues.value, '0')
+
+                // Ensure that CollectSurplus of 0, 0 is performed correctly
+                assert.strictEqual(
+                    collectSurplusEvent.address,
+                    tokenSymbols[contractName].toUpperCase()
+                );
+                assert.strictEqual(collectSurplusEvent.eventName, 'CollectSurplus');
+                assert.strictEqual(
+                    collectSurplusEvent.returnValues.surplusAmount, '0'
+                )
+                assert.strictEqual(
+                    collectSurplusEvent.returnValues.surplusCTokens, '0'
+                )
+            },
         )
     }
 
-    await tester.runTest(
-        `Accrue ${cTokenSymbols[contractName]} interest`,
-        CToken,
-        'accrueInterest',
-        'send',
-        [],
-        true,
-        receipt => {
-            const events = tester.getEvents(receipt, contractNames)
+    async function getUnderlyingTokens() {
+        // Get some underlying tokens from Uniswap
+        let priceOfOneHundredUnderlying;
+        await tester.runTest(
+            `Get the price of 100 ${underlyingSymbols[contractName]} from Uniswap`,
+            Uniswap,
+            'getEthToTokenOutputPrice',
+            'call',
+            ['1'.padEnd(underlyingDecimals[contractName] + 3, '0')],
+            true,
+            value => {
+                priceOfOneHundredUnderlying = value
+            },
+        )
 
-            validateCTokenInterestAccrualEvents(
-                events, 0, cTokenSymbols[contractName]
-            )
-        }
-    )
+        await tester.runTest(
+            `Get 100 ${underlyingSymbols[contractName]} from Uniswap`,
+            Uniswap,
+            'ethToTokenSwapOutput',
+            'send',
+            ['1'.padEnd(underlyingDecimals[contractName] + 3, '0'), '9999999999'],
+            true,
+            receipt => {},
+            tester.address,
+            priceOfOneHundredUnderlying
+        )
 
-    let cTokenSupplyRate;
-    await tester.runTest(
-        `${cTokenSymbols[contractName]} supply rate can be retrieved`,
-        CToken,
-        'supplyRatePerBlock',
-        'call',
-        [],
-        true,
-        value => {
-            cTokenSupplyRate = web3.utils.toBN(value)
-        }
-    )
+        await tester.runTest(
+            `Check that we now have 100 ${underlyingSymbols[contractName]}`,
+            Underlying,
+            'balanceOf',
+            'call',
+            [tester.address],
+            true,
+            value => {
+                assert.strictEqual(
+                    value, '1'.padEnd(underlyingDecimals[contractName] + 3, '0')
+                )
+            },
+        )
+    }
 
-    let dTokenSupplyRate = (cTokenSupplyRate.mul(tester.NINE)).div(tester.TEN)
-    await tester.runTest(
-        `${contractName} supply rate starts at 90% of ${cTokenSymbols[contractName]} supply rate`,
-        DToken,
-        'supplyRatePerBlock',
-        'call',
-        [],
-        true,
-        value => {
-            assert.strictEqual(value, dTokenSupplyRate.toString())
-        }
-    )
+    async function testCannotMintBeforeApproval() {
+        await tester.runTest(
+            `${contractName} cannot mint dTokens without prior approval`,
+            DToken,
+            'mint',
+            'send',
+            ['1'.padEnd(underlyingDecimals[contractName] + 1, '0')],
+            false
+        );
 
-    let cTokenExchangeRate;
-    await tester.runTest(
-        `${cTokenSymbols[contractName]} exchange rate can be retrieved`,
-        CToken,
-        'exchangeRateCurrent',
-        'call',
-        [],
-        true,
-        value => {
-             cTokenExchangeRate = web3.utils.toBN(value)
-        }
-    )
-
-    await tester.runTest(
-        `${contractName} exchange rate can be retrieved`,
-        DToken,
-        'exchangeRateCurrent',
-        'call',
-        [],
-        true,
-        value => {
-            dTokenExchangeRate = web3.utils.toBN(value)
-        }
-    );
-
-    [
-        storedDTokenExchangeRate, storedCTokenExchangeRate, blockNumber
-    ] = await prepareToValidateAccrual(web3, DToken)
-
-    await tester.runTest(
-        `${contractName} accrueInterest can be triggered correctly from any account`,
-        DToken,
-        'accrueInterest',
-        'send',
-        [],
-        true,
-        receipt => {
-            assert.strictEqual(receipt.blockNumber, blockNumber + 1)
-            const events = tester.getEvents(receipt, contractNames)
-
-            assert.strictEqual(events.length, 1);
-
-            [dTokenExchangeRate, cTokenExchangeRate] = validateDTokenAccrueEvent(
-                events, 0, contractName, web3, tester, storedDTokenExchangeRate, storedCTokenExchangeRate
-            );
-        },
-        tester.originalAddress
-    )
-
-    await tester.runTest(
-        `${contractName} exchange rate is updated correctly`,
-        DToken,
-        'exchangeRateCurrent',
-        'call',
-        [],
-        true,
-        value => {
-            assert.strictEqual(value, dTokenExchangeRate.toString())
-        }
-    )
-
-    await tester.runTest(
-        `${contractName} supply rate is updated after an accrual`,
-        DToken,
-        'supplyRatePerBlock',
-        'call',
-        [],
-        true,
-        value => {
-            dTokenSupplyRate = value
-        }
-    )
-
-    await tester.runTest(
-        `${cTokenSymbols[contractName]} exchange rate is updated correctly`,
-        CToken,
-        'exchangeRateCurrent',
-        'call',
-        [],
-        true,
-        value => {
-            assert.strictEqual(value, cTokenExchangeRate.toString())
-        }
-    )
-
-    await tester.runTest(
-        `${cTokenSymbols[contractName]} supply rate is unchanged after ${tokenSymbols[contractName]} accrual (as it did not accrue)`,
-        CToken,
-        'supplyRatePerBlock',
-        'call',
-        [],
-        true,
-        value => {
-            assert.strictEqual(value, cTokenSupplyRate.toString())
-        }
-    );
-
-    [
-        storedDTokenExchangeRate, storedCTokenExchangeRate, blockNumber
-    ] = await prepareToValidateAccrual(web3, DToken)
-
-    await tester.runTest(
-        `${contractName} can pull surplus of 0 before any tokens are minted`,
-        DToken,
-        'pullSurplus',
-        'send',
-        [],
-        true,
-        receipt => {
-            const events = tester.getEvents(receipt, contractNames);
-
-            const extraEvents = contractName === 'Dharma Dai' ? 2 : 0;
-
-            assert.strictEqual(events.length, 4 + extraEvents);
-
-            const transferEvent = events[2 + extraEvents];
-            const collectSurplusEvent = events[3 + extraEvents];
-
-            // Ensure that cToken accrual is performed correctly
-            validateCTokenInterestAccrualEvents(
-                events, 0, cTokenSymbols[contractName]
-            );            
-
-            // Ensure that dToken accrual is performed correctly
-            [dTokenExchangeRate, cTokenExchangeRate] = validateDTokenAccrueEvent(
-                events, 1 + extraEvents, contractName, web3, tester, storedDTokenExchangeRate, storedCTokenExchangeRate
-            );
-
-            // Ensure that cToken transfer of 0 tokens is performed correctly
-            assert.strictEqual(
-                transferEvent.address, cTokenSymbols[contractName].toUpperCase()
-            );
-            assert.strictEqual(transferEvent.eventName, 'Transfer');
-            assert.strictEqual(
-                transferEvent.returnValues.from, DToken.options.address
-            )
-            assert.strictEqual(
-                transferEvent.returnValues.to, constants.VAULT_MAINNET_ADDRESS
-            )
-            assert.strictEqual(transferEvent.returnValues.value, '0')
-
-            // Ensure that CollectSurplus of 0, 0 is performed correctly
-            assert.strictEqual(
-                collectSurplusEvent.address,
-                tokenSymbols[contractName].toUpperCase()
-            );
-            assert.strictEqual(collectSurplusEvent.eventName, 'CollectSurplus');
-            assert.strictEqual(
-                collectSurplusEvent.returnValues.surplusAmount, '0'
-            )
-            assert.strictEqual(
-                collectSurplusEvent.returnValues.surplusCTokens, '0'
-            )
-        },
-    )
-
-    // Get some underlying tokens from Uniswap
-    let priceOfOneHundredUnderlying;
-    await tester.runTest(
-        `Get the price of 100 ${underlyingSymbols[contractName]} from Uniswap`,
-        Uniswap,
-        'getEthToTokenOutputPrice',
-        'call',
-        ['1'.padEnd(underlyingDecimals[contractName] + 3, '0')],
-        true,
-        value => {
-            priceOfOneHundredUnderlying = value
-        },
-    )
-
-    await tester.runTest(
-        `Get 100 ${underlyingSymbols[contractName]} from Uniswap`,
-        Uniswap,
-        'ethToTokenSwapOutput',
-        'send',
-        ['1'.padEnd(underlyingDecimals[contractName] + 3, '0'), '9999999999'],
-        true,
-        receipt => {},
-        tester.address,
-        priceOfOneHundredUnderlying
-    )
-
-    await tester.runTest(
-        `Check that we now have 100 ${underlyingSymbols[contractName]}`,
-        Underlying,
-        'balanceOf',
-        'call',
-        [tester.address],
-        true,
-        value => {
-            assert.strictEqual(
-                value, '1'.padEnd(underlyingDecimals[contractName] + 3, '0')
-            )
-        },
-    )
-
-    await tester.runTest(
-        `${contractName} cannot mint dTokens without prior approval`,
-        DToken,
-        'mint',
-        'send',
-        ['1'.padEnd(underlyingDecimals[contractName] + 1, '0')],
-        false
-    )
-
-    await tester.runTest(
-        `${underlyingSymbols[contractName]} can approve ${contractName} in order to mint dTokens`,
-        Underlying,
-        'approve',
-        'send',
-        [DToken.options.address, constants.FULL_APPROVAL]
-    )
-
-    await tester.runTest(
-        `${contractName} can get dToken exchange rate`,
-        DToken,
-        'exchangeRateCurrent',
-        'call',
-        [],
-        true,
-        value => {
-            dTokenExchangeRate = web3.utils.toBN(value)    
-        }
-    )
-
-    await tester.runTest(
-        `${cTokenSymbols[contractName]} exchange rate can be retrieved`,
-        CToken,
-        'exchangeRateCurrent',
-        'call',
-        [],
-        true,
-        value => {
-            cTokenExchangeRate = web3.utils.toBN(value)
-        }
-    )
+        await tester.runTest(
+            `${underlyingSymbols[contractName]} can approve ${contractName} in order to mint dTokens`,
+            Underlying,
+            'approve',
+            'send',
+            [DToken.options.address, constants.FULL_APPROVAL]
+        );
+    }
 
     async function testMint() {
         let totalDTokensMinted;
@@ -3136,6 +3205,23 @@ async function runAllTests(web3, context, contractName, contract) {
     }
 
 
+    // Test snapshot and advance (time/block) functions
+    await testSnapshot(web3, tester);
+    await testAdvanceTimeAndBlock(web3, tester);
+
+    // Take initial snapshot to run function tests, and revert before starting scenarios.
+    const initialSnapshot = await tester.takeSnapshot();
+    const { result: initialSnapshotId } = initialSnapshot;
+
+    await testPureFunctions();
+    await testInitialExchangeRates();
+    await testAccrueInterest();
+    await testSupplyRatePerBlock();
+    await testExchangeRate();
+    await testAccrueInterestFromAnyAccount();
+    await testPullSurplusBeforeMints();
+    await getUnderlyingTokens();
+    await testCannotMintBeforeApproval();
     await testMint();
     await testPullSurplusAfterMint();
     await testRedeem();
@@ -3156,10 +3242,10 @@ async function runAllTests(web3, context, contractName, contract) {
     await testRequireNonNull();
     await testBlockAccrual();
 
-
     await tester.revertToSnapShot(initialSnapshotId);
 
     // Start testing scenarios
+
 
     console.log(
         `completed ${tester.passed + tester.failed} test${tester.passed + tester.failed === 1 ? '' : 's'} ` +
@@ -3228,105 +3314,42 @@ async function testSnapshot(web3, tester) {
 }
 
 async function testAdvanceTimeAndBlock(web3, tester) {
-    const ONE_HUNDRED_DAYS = SECONDS_IN_DAY * 100;
+    let BLOCKS = 10;
+    const SECONDS_PER_BLOCK = 15;
+    const MILISECONDS_IN_ONE_DAY = 24 * 60 * 60 * 1000;
+    const MILISECONDS_IN_ONE_HOUR = 60 * 60 * 1000;
+    const MILISECONDS_IN_ONE_MINUTE = 60 * 1000;
 
     const blockBeforeSnapshot = await web3.eth.getBlock('latest');
-
     const { timestamp: timeBeforeSnapshot, number: blockNumberBeforeSnapshot } = blockBeforeSnapshot;
 
     const snapshot = await tester.takeSnapshot();
-
     const { result: snapshotId } = snapshot;
 
-    await tester.advanceTimeAndBlock(ONE_HUNDRED_DAYS);
+    await advanceByBlocks(BLOCKS, tester);
 
     const newBlock = await web3.eth.getBlock('latest');
     const { timestamp: currentTime, number: currentBlockNumber } = newBlock;
 
+    const differenceInMinutes = Math.round(
+        ((currentTime - timeBeforeSnapshot % MILISECONDS_IN_ONE_DAY) % MILISECONDS_IN_ONE_HOUR) / MILISECONDS_IN_ONE_MINUTE
+    );
 
-    const timeDifferenceInDays = Math.floor((currentTime - timeBeforeSnapshot) / SECONDS_IN_DAY);
-
-    assert.strictEqual(timeDifferenceInDays, 100);
-    assert.strictEqual(blockNumberBeforeSnapshot + 1, currentBlockNumber);
+    assert.strictEqual(differenceInMinutes, (Math.round((BLOCKS * SECONDS_PER_BLOCK) / 60)));
+    assert.strictEqual(blockNumberBeforeSnapshot + BLOCKS, currentBlockNumber);
 
     await tester.revertToSnapShot(snapshotId);
 }
 
-async function testPureFunctions(
-    tester, DTokenContract, CTokenContract, UnderlyingContract, DTokenName, DTokenSymbol
-) {
-    await tester.runTest(
-        `${DTokenName} gets the initial version correctly`,
-        DTokenContract,
-        'getVersion',
-        'call',
-        [],
-        true,
-        value => {
-            assert.strictEqual(value, '0')
-        }
-    );
+async function advanceByBlocks(blocks, tester) {
+    const SECONDS_PER_BLOCK = 15;
 
-    await tester.runTest(
-        `${DTokenName} gets name correctly`,
-        DTokenContract,
-        'name',
-        'call',
-        [],
-        true,
-        value => {
-            assert.strictEqual(value, DTokenName)
-        }
-    );
-
-    await tester.runTest(
-        `${DTokenName} gets symbol correctly`,
-        DTokenContract,
-        'symbol',
-        'call',
-        [],
-        true,
-        value => {
-            assert.strictEqual(value, DTokenSymbol)
-        }
-    );
-
-    await tester.runTest(
-        `${DTokenName} gets decimals correctly`,
-        DTokenContract,
-        'decimals',
-        'call',
-        [],
-        true,
-        value => {
-            assert.strictEqual(value, DTokenDecimals.toString())
-        }
-    );
-
-    await tester.runTest(
-        `${DTokenName} gets cToken address correctly`,
-        DTokenContract,
-        'getCToken',
-        'call',
-        [],
-        true,
-        value => {
-            assert.strictEqual(value, CTokenContract.options.address)
-        }
-    );
-
-    await tester.runTest(
-        `${DTokenName} gets underlying address correctly`,
-        DTokenContract,
-        'getUnderlying',
-        'call',
-        [],
-        true,
-        value => {
-            assert.strictEqual(value, UnderlyingContract.options.address)
-        }
-    );
+    for (let i = 0; i < blocks; i++){
+        await tester.advanceTimeAndBlock(SECONDS_PER_BLOCK * 1000);
+    }
 }
+
+
 
 module.exports = {
     runAllTests,
