@@ -3314,7 +3314,7 @@ async function testSnapshot(web3, tester) {
 }
 
 async function testAdvanceTimeAndBlock(web3, tester) {
-    let BLOCKS = 10;
+    const BLOCKS = 10;
     const SECONDS_PER_BLOCK = 15;
     const MILISECONDS_IN_ONE_DAY = 24 * 60 * 60 * 1000;
     const MILISECONDS_IN_ONE_HOUR = 60 * 60 * 1000;
