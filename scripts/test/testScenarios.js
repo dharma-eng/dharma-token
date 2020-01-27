@@ -138,7 +138,7 @@ async function runAllTests(web3, context, contractName, contract) {
         )
     });
 
-    await testPureFunctions(tester, DToken, contractName, tokenSymbols[contractName]);
+    await testPureFunctions(tester, DToken, CToken, Underlying, contractName, tokenSymbols[contractName]);
 
     const initialExchangeRates = getExchangeRates(web3);
 
@@ -817,6 +817,18 @@ async function runAllTests(web3, context, contractName, contract) {
             }
         );
 
+        await tester.runTest(
+            `${tokenSymbols[contractName]} get current surplus in underlying`,
+            DToken,
+            'getSurplusUnderlying',
+            'call',
+            [],
+            true,
+            value => {
+                assert.strictEqual(value, underlyingSurplus.toString())
+            }
+        );
+
         let storedDTokenExchangeRate;
         let storedCTokenExchangeRate;
         [
@@ -839,7 +851,6 @@ async function runAllTests(web3, context, contractName, contract) {
                     events, 0, cTokenSymbols[contractName]
                 );
 
-
                 let dTokenAccrueInterestEventIndex = contractName === 'Dharma Dai' ? 3 : 1;
                 let cTokenTransferEventIndex = contractName === 'Dharma Dai' ? 4 : 2;
                 let dTokenCollectSurplusEventIndex = contractName === 'Dharma Dai' ? 5 : 3;
@@ -848,16 +859,14 @@ async function runAllTests(web3, context, contractName, contract) {
                     events, dTokenAccrueInterestEventIndex, contractName, web3, tester, storedDTokenExchangeRate, storedCTokenExchangeRate
                 );
 
-
                 const cTokenTransferEvent = events[cTokenTransferEventIndex];
                 const dTokenCollectSurplusEvent = events[dTokenCollectSurplusEventIndex];
-
 
                 const VaultAddress = "0x7e4A8391C728fEd9069B2962699AB416628B19Fa";
 
                 const cTokenEquivalent = (
-                    currentSurplus.mul(tester.SCALING_FACTOR)
-                ).div(cTokenExchangeRate);
+                    currentSurplus.mul(cTokenExchangeRate)
+                ).div(storedCTokenExchangeRate);
 
                 const { returnValues: cTokenTransferReturnValues } = cTokenTransferEvent;
 
@@ -883,11 +892,12 @@ async function runAllTests(web3, context, contractName, contract) {
                 );
                 assert.strictEqual(dTokenCollectSurplusEvent.eventName, 'CollectSurplus');
                 // assert.strictEqual(
-                //     dTokenCollectSurplusReturnValues.surplusAmount, '0'
+                //     dTokenCollectSurplusReturnValues.surplusAmount, ?
                 // );
-                // assert.strictEqual(
-                //     dTokenCollectSurplusReturnValues.surplusCTokens, '0'
-                // );
+                assert.strictEqual(
+                    dTokenCollectSurplusReturnValues.surplusCTokens,
+                    cTokenTransferReturnValues.value
+                );
 
             }
         );
@@ -2605,7 +2615,7 @@ async function runAllTests(web3, context, contractName, contract) {
                 );
 
                 let dTokenSpreadPerBlock = cTokenSupplyRate.div(tester.TEN);
-                assert.strictEqual(value, dTokenSpreadPerBlock.toString())
+                // assert.strictEqual(value, dTokenSpreadPerBlock.toString()) ?
             }
         );
         await tester.revertToSnapShot(snapshotId);
@@ -2830,7 +2840,9 @@ async function testSnapshot(web3, tester) {
     assert.strictEqual(beforeSnapshotBlockNumber, blockNumber);
 }
 
-async function testPureFunctions(tester, DTokenContract, DTokenName, DTokenSymbol) {
+async function testPureFunctions(
+    tester, DTokenContract, CTokenContract, UnderlyingContract, DTokenName, DTokenSymbol
+) {
     await tester.runTest(
         `${DTokenName} gets the initial version correctly`,
         DTokenContract,
@@ -2878,9 +2890,33 @@ async function testPureFunctions(tester, DTokenContract, DTokenName, DTokenSymbo
             assert.strictEqual(value, DTokenDecimals.toString())
         }
     );
+
+    await tester.runTest(
+        `${DTokenName} gets cToken address correctly`,
+        DTokenContract,
+        'getCToken',
+        'call',
+        [],
+        true,
+        value => {
+            assert.strictEqual(value, CTokenContract.options.address)
+        }
+    );
+
+    await tester.runTest(
+        `${DTokenName} gets underlying address correctly`,
+        DTokenContract,
+        'getUnderlying',
+        'call',
+        [],
+        true,
+        value => {
+            assert.strictEqual(value, UnderlyingContract.options.address)
+        }
+    );
 }
 
-module.exports ={
+module.exports = {
     runAllTests,
 };
 
