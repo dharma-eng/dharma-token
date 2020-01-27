@@ -146,21 +146,17 @@ class Tester {
     }
 
     async advanceTime(time) {
-        await this.web3.currentProvider.send(
-            {
+        return new Promise((resolve, reject) => {
+            this.web3.currentProvider.send({
                 jsonrpc: '2.0',
                 method: 'evm_increaseTime',
                 params: [time],
                 id: new Date().getTime()
-            },
-            (err, result) => {
-                if (err) {
-                    console.error(err)
-                } else {
-                    console.log(' ✓ advanced time by', time, 'seconds')
-                }
-            }
-        )
+            }, (err, result) => {
+                if (err) { return reject(err) }
+                return resolve(result)
+            })
+        })
     }
 
     async takeSnapshot() {
@@ -175,6 +171,7 @@ class Tester {
             })
         })
     }
+
 
     async revertToSnapShot(id) {
         return new Promise((resolve, reject) => {
@@ -203,6 +200,12 @@ class Tester {
                 return resolve(newBlockHash)
             })
         })
+    }
+
+    async advanceTimeAndBlock(time) {
+        await this.advanceTime(time);
+        await this.advanceBlock();
+        return Promise.resolve(this.web3.eth.getBlock('latest'))
     }
 
     signHashedPrefixedHexString(hashedHexString, account) {

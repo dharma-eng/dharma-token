@@ -26,6 +26,8 @@ const cTokenSymbols = {
 
 const DTokenDecimals = 8;
 
+const SECONDS_IN_DAY = 86400;
+
 const validateCTokenInterestAccrualEvents = (
     parsedEvents, eventIndex, cTokenSymbol
 ) => {
@@ -117,8 +119,14 @@ async function runAllTests(web3, context, contractName, contract) {
     const tester = new Tester(web3, context);
     await tester.init();
 
-    // Test takeSnapshot and revertToSnapshot
+    // Test snapshot and advance (time/block) functions
     await testSnapshot(web3, tester);
+    await testAdvanceTimeAndBlock(web3, tester);
+
+    // Take initial snapshot to run function tests, and revert before starting scenarios.
+    const initialSnapshot = await tester.takeSnapshot();
+    const { result: initialSnapshotId } = initialSnapshot;
+
 
     const DToken = await getOrDeployDTokenContract(contract, tester, contractName);
 
@@ -3149,6 +3157,10 @@ async function runAllTests(web3, context, contractName, contract) {
     await testBlockAccrual();
 
 
+    await tester.revertToSnapShot(initialSnapshotId);
+
+    // Start testing scenarios
+
     console.log(
         `completed ${tester.passed + tester.failed} test${tester.passed + tester.failed === 1 ? '' : 's'} ` +
         `on the ${tokenSymbols[contractName]} contract with ${tester.failed} failure${tester.failed === 1 ? '' : 's'}.`
@@ -3194,7 +3206,6 @@ function getExchangeRates(web3) {
     };
 }
 
-
 async function testSnapshot(web3, tester) {
     // test takeSnapshot and revertToSnapshot
     const beforeSnapshotBlockNumber = (await web3.eth.getBlock('latest')).number;
@@ -3214,6 +3225,31 @@ async function testSnapshot(web3, tester) {
     const blockNumber = (await web3.eth.getBlock('latest')).number;
 
     assert.strictEqual(beforeSnapshotBlockNumber, blockNumber);
+}
+
+async function testAdvanceTimeAndBlock(web3, tester) {
+    const ONE_HUNDRED_DAYS = SECONDS_IN_DAY * 100;
+
+    const blockBeforeSnapshot = await web3.eth.getBlock('latest');
+
+    const { timestamp: timeBeforeSnapshot, number: blockNumberBeforeSnapshot } = blockBeforeSnapshot;
+
+    const snapshot = await tester.takeSnapshot();
+
+    const { result: snapshotId } = snapshot;
+
+    await tester.advanceTimeAndBlock(ONE_HUNDRED_DAYS);
+
+    const newBlock = await web3.eth.getBlock('latest');
+    const { timestamp: currentTime, number: currentBlockNumber } = newBlock;
+
+
+    const timeDifferenceInDays = Math.floor((currentTime - timeBeforeSnapshot) / SECONDS_IN_DAY);
+
+    assert.strictEqual(timeDifferenceInDays, 100);
+    assert.strictEqual(blockNumberBeforeSnapshot + 1, currentBlockNumber);
+
+    await tester.revertToSnapShot(snapshotId);
 }
 
 async function testPureFunctions(
