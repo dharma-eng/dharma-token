@@ -181,7 +181,9 @@ contract DharmaToken is ERC20Interface, DTokenInterface, DharmaTokenHelpers {
     );
 
     // Determine amount of cTokens corresponding to underlying equivalent value.
-    cTokensReceived = _fromUnderlying(underlyingEquivalent, cTokenExchangeRate, false);
+    cTokensReceived = _fromUnderlying(
+      underlyingEquivalent, cTokenExchangeRate, false
+    );
 
     // Burn the dTokens.
     _burn(msg.sender, underlyingEquivalent, dTokensToBurn);
@@ -348,7 +350,9 @@ contract DharmaToken is ERC20Interface, DTokenInterface, DharmaTokenHelpers {
     (uint256 dTokenExchangeRate, ) = _accrue(true);
 
     // Determine dToken amount to transfer using the exchange rate, rounded up.
-    uint256 dTokenAmount = _fromUnderlying(underlyingEquivalentAmount, dTokenExchangeRate, true);
+    uint256 dTokenAmount = _fromUnderlying(
+      underlyingEquivalentAmount, dTokenExchangeRate, true
+    );
 
     // Transfer the dTokens.
     _transfer(msg.sender, recipient, dTokenAmount);
@@ -405,7 +409,9 @@ contract DharmaToken is ERC20Interface, DTokenInterface, DharmaTokenHelpers {
     (uint256 dTokenExchangeRate, ) = _accrue(true);
 
     // Determine dToken amount to transfer using the exchange rate, rounded up.
-    uint256 dTokenAmount = _fromUnderlying(underlyingEquivalentAmount, dTokenExchangeRate, true);
+    uint256 dTokenAmount = _fromUnderlying(
+      underlyingEquivalentAmount, dTokenExchangeRate, true
+    );
 
     // Transfer the dTokens and adjust allowance accordingly.
     _transfer(sender, recipient, dTokenAmount);
@@ -492,7 +498,9 @@ contract DharmaToken is ERC20Interface, DTokenInterface, DharmaTokenHelpers {
     (uint256 dTokenExchangeRate, ,) = _getExchangeRates(true);
 
     // Convert account balance to underlying equivalent using the exchange rate.
-    underlyingBalance = _toUnderlying(_balances[account], dTokenExchangeRate, false);
+    underlyingBalance = _toUnderlying(
+      _balances[account], dTokenExchangeRate, false
+    );
   }
 
   /**
@@ -784,10 +792,14 @@ contract DharmaToken is ERC20Interface, DTokenInterface, DharmaTokenHelpers {
     // Instantiate the interface for the backing cToken.
     CTokenInterface cToken = CTokenInterface(_getCToken());
 
-    (uint256 dTokenExchangeRate, uint256 cTokenExchangeRate,) = _getExchangeRates(true);
+    (
+      uint256 dTokenExchangeRate, uint256 cTokenExchangeRate,
+    ) = _getExchangeRates(true);
 
     // Determine value of all issued dTokens in the underlying, rounded up.
-    uint256 dTokenUnderlying = _toUnderlying(_totalSupply, dTokenExchangeRate, true);
+    uint256 dTokenUnderlying = _toUnderlying(
+      _totalSupply, dTokenExchangeRate, true
+    );
 
     // Determine value of all retained cTokens in the underlying, rounded down.
     uint256 cTokenUnderlying = _toUnderlying(

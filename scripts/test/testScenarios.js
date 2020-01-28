@@ -616,12 +616,16 @@ async function runAllTests(web3, context, contractName, contract) {
             blockNumber
         ] = await prepareToValidateAccrual(web3, DToken);
 
+        const underlyingToSupply = web3.utils.toBN(
+            '1'.padEnd(underlyingDecimals[contractName] + 2, '0')
+        );
+
         await tester.runTest(
             `${contractName} can mint dTokens`,
             DToken,
             'mint',
             'send',
-            ['1'.padEnd(underlyingDecimals[contractName] + 2, '0')],
+            [underlyingToSupply.toString()],
             true,
             receipt => {
                 const extraEvents = contractName === 'Dharma Dai' ? 7 : 0
@@ -772,6 +776,19 @@ async function runAllTests(web3, context, contractName, contract) {
                     calculatedDTokenExchangeRate.toString()
                 )
 
+                // Validate dToken mint to caller
+                const cTokenEquivalent = (web3.utils.toBN(
+                    dTokenMintEvent.returnValues.mintTokens
+                ).mul(tester.SCALING_FACTOR)).div(cTokenExchangeRate);
+
+                const underlyingEquivalent = (
+                    cTokenEquivalent.mul(cTokenExchangeRate)
+                ).div(tester.SCALING_FACTOR);
+
+                const dTokensMinted = (
+                    underlyingEquivalent.mul(tester.SCALING_FACTOR)
+                ).div(dTokenExchangeRate);
+
                 assert.strictEqual(
                     cTokenMintEvent.returnValues.mintAmount,
                     (web3.utils.toBN(
@@ -779,7 +796,6 @@ async function runAllTests(web3, context, contractName, contract) {
                     ).mul(tester.SCALING_FACTOR)).div(cTokenExchangeRate).toString()
                 )
 
-                // Validate dToken mint to caller
                 assert.strictEqual(
                     dTokenMintEvent.address, tokenSymbols[contractName].toUpperCase()
                 )
@@ -791,12 +807,9 @@ async function runAllTests(web3, context, contractName, contract) {
                     dTokenMintEvent.returnValues.mintTokens,
                     cTokenMintEvent.returnValues.mintTokens
                 )
-
                 assert.strictEqual(
                     dTokenMintEvent.returnValues.mintAmount,
-                    (web3.utils.toBN(
-                        dTokenMintEvent.returnValues.mintTokens
-                    ).mul(tester.SCALING_FACTOR)).div(dTokenExchangeRate).toString()
+                    dTokensMinted.toString()
                 )
 
                 totalDTokensMinted = dTokenMintEvent.returnValues.mintAmount
@@ -1113,7 +1126,7 @@ async function runAllTests(web3, context, contractName, contract) {
             'send',
             [dTokensToBurn.toString()],
             true,
-            async receipt => {
+            receipt => {
                 const extraEvents = contractName === 'Dharma Dai' ? 6 : 0
 
                 const events = tester.getEvents(receipt, contractNames);
@@ -1152,6 +1165,14 @@ async function runAllTests(web3, context, contractName, contract) {
                     dTokensToBurn.mul(dTokenExchangeRate)
                 ).div(tester.SCALING_FACTOR);
 
+                cTokenToReceive = (
+                    underlyingEquivalent.mul(tester.SCALING_FACTOR)
+                ).div(cTokenExchangeRate);
+
+                const underlyingReceived = (
+                    cTokenToReceive.mul(cTokenExchangeRate)
+                ).div(tester.SCALING_FACTOR);
+
                 // Validate dToken redeem (emits underlying equivalent tokens)
                 assert.strictEqual(
                     dTokenRedeemEvent.address, tokenSymbols[contractName].toUpperCase()
@@ -1162,7 +1183,7 @@ async function runAllTests(web3, context, contractName, contract) {
                 );
                 assert.strictEqual(
                     dTokenRedeemReturnValues.redeemTokens,
-                    underlyingEquivalent.toString()
+                    underlyingReceived.toString()
                 );
                 assert.strictEqual(
                     dTokenRedeemReturnValues.redeemAmount,
@@ -1179,15 +1200,6 @@ async function runAllTests(web3, context, contractName, contract) {
                 const underlyingTransferEvent = events[7 + extraEvents];
 
                 const { returnValues: cTokenTransferReturnValues } = cTokenTransferEvent;
-
-                [
-                    storedDTokenExchangeRate,
-                    storedCTokenExchangeRate,
-                ] = await prepareToValidateAccrual(web3, DToken);
-
-                cTokenToReceive = (
-                    underlyingEquivalent.mul(tester.SCALING_FACTOR)
-                ).div(storedCTokenExchangeRate);
 
                 // Validate cToken transfer to caller
                 assert.strictEqual(
@@ -1218,7 +1230,7 @@ async function runAllTests(web3, context, contractName, contract) {
                 );
                 assert.strictEqual(
                     cTokenRedeemReturnValues.redeemTokens,
-                    underlyingEquivalent.toString()
+                    underlyingReceived.toString()
                 );
                 assert.strictEqual(
                     cTokenRedeemReturnValues.redeemAmount,
@@ -1240,7 +1252,7 @@ async function runAllTests(web3, context, contractName, contract) {
                 );
                 assert.strictEqual(
                     underlyingTransferReturnValues.value,
-                    underlyingEquivalent.toString()
+                    underlyingReceived.toString()
                 );
             }
         );
@@ -1324,7 +1336,7 @@ async function runAllTests(web3, context, contractName, contract) {
             'send',
             [underlyingToReceive.toString()],
             true,
-            async receipt => {
+            receipt => {
                 const extraEvents = contractName === 'Dharma Dai' ? 6 : 0
 
                 const events = tester.getEvents(receipt, contractNames);
@@ -1393,14 +1405,22 @@ async function runAllTests(web3, context, contractName, contract) {
                     cTokenTransferEventReturnValues.to, CToken.options.address
                 );
 
-                [
-                    storedDTokenExchangeRate,
-                    storedCTokenExchangeRate,
-                ] = await prepareToValidateAccrual(web3, DToken);
+                // validate dToken Accrue event
+                [dTokenExchangeRate, cTokenExchangeRate] = validateDTokenAccrueEvent(
+                    events, 4 + extraEvents, contractName, web3, tester, storedDTokenExchangeRate, storedCTokenExchangeRate
+                );
 
-                redeemAmount = (
+                redeemAmount = ((
                     underlyingToReceive.mul(tester.SCALING_FACTOR)
-                ).div(storedCTokenExchangeRate);
+                ).div(cTokenExchangeRate));
+
+                const underlyingEquivalent = ((
+                    (redeemAmount.add(tester.ONE)).mul(cTokenExchangeRate)
+                ).div(tester.SCALING_FACTOR)).add(tester.ONE);
+
+                dTokenToBurn = ((
+                    underlyingEquivalent.mul(tester.SCALING_FACTOR)
+                ).div(dTokenExchangeRate)).add(tester.ONE);
 
                 assert.strictEqual(
                     cTokenTransferEventReturnValues.value,
@@ -1428,11 +1448,6 @@ async function runAllTests(web3, context, contractName, contract) {
                     redeemAmount.toString()
                 );
 
-                // validate dToken Accrue event
-                [dTokenExchangeRate, cTokenExchangeRate] = validateDTokenAccrueEvent(
-                    events, 4 + extraEvents, contractName, web3, tester, storedDTokenExchangeRate, storedCTokenExchangeRate
-                );
-
                 // dToken "burn" transfer to null address (TODO: validate)
                 const dTokenTransferEvent = events[5 + extraEvents];
                 const { returnValues: dTokenTransferEventReturnValues } = dTokenTransferEvent;
@@ -1447,10 +1462,6 @@ async function runAllTests(web3, context, contractName, contract) {
                 assert.strictEqual(
                     dTokenTransferEventReturnValues.to, constants.NULL_ADDRESS
                 );
-
-                dTokenToBurn = (
-                    underlyingToReceive.mul(tester.SCALING_FACTOR)
-                ).div(storedDTokenExchangeRate).add(tester.ONE);
 
                 assert.strictEqual(
                     dTokenTransferEventReturnValues.value,
@@ -3367,8 +3378,7 @@ async function runAllTests(web3, context, contractName, contract) {
             ],
             true,
             receipt => {
-                const events = tester.getEvents(receipt, contractNames)
-
+                const events = tester.getEvents(receipt, contractNames);
                 console.log(JSON.stringify(events, null, 2));
             }
         );
