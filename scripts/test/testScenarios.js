@@ -522,7 +522,7 @@ async function runAllTests(web3, context, contractName, contract) {
         )
     }
 
-    async function getUnderlyingTokens(address) {
+    async function getUnderlyingTokens() {
         // Get some underlying tokens from Uniswap
         let priceOfOneHundredUnderlying;
         await tester.runTest(
@@ -545,7 +545,7 @@ async function runAllTests(web3, context, contractName, contract) {
             ['1'.padEnd(underlyingDecimals[contractName] + 3, '0'), '9999999999'],
             true,
             receipt => {},
-            address,
+            tester.address,
             priceOfOneHundredUnderlying
         )
 
@@ -554,7 +554,7 @@ async function runAllTests(web3, context, contractName, contract) {
             Underlying,
             'balanceOf',
             'call',
-            [address],
+            [tester.address],
             true,
             value => {
                 assert.strictEqual(
@@ -3299,9 +3299,79 @@ async function runAllTests(web3, context, contractName, contract) {
             'deploy',
         );
 
-        const { options: { address: scenario0HelperAddress  } } = Scenario0Helper;
+        let underlyingBalance;
+        await tester.runTest(
+            `Check that we start with 100 ${underlyingSymbols[contractName]}`,
+            Underlying,
+            'balanceOf',
+            'call',
+            [tester.address],
+            true,
+            value => {
+                underlyingBalance = web3.utils.toBN(value);
+                assert.strictEqual(
+                    value, '1'.padEnd(underlyingDecimals[contractName] + 3, '0')
+                )
+            },
+        );
 
-        await getUnderlyingTokens(scenario0HelperAddress);
+        await tester.runTest(
+            `${underlyingSymbols[contractName]} can approve ${contractName} in order to mint dTokens`,
+            Underlying,
+            'approve',
+            'send',
+            [Scenario0Helper.options.address, constants.FULL_APPROVAL]
+        );
+
+        // Phase 1
+        await tester.runTest(
+            `${contractName} Scenario 0, Phase 1`,
+            Scenario0Helper,
+            'phaseOne',
+            'send',
+            [
+                CToken.options.address,
+                DToken.options.address,
+                Underlying.options.address
+            ],
+            true,
+            receipt => {
+                const events = tester.getEvents(receipt, contractNames)
+
+                console.log(JSON.stringify(events, null, 2));
+            }
+        );
+
+        // Advance blocks
+        let block = await web3.eth.getBlock('latest');
+        const { number: blockNumber } = block;
+
+        const blocksToAdvance  = 1000;
+        await advanceByBlocks(blocksToAdvance, tester);
+
+        block = await web3.eth.getBlock('latest');
+        const { number: currentBlockNumber } = block;
+
+        assert.strictEqual(currentBlockNumber, blockNumber + blocksToAdvance);
+
+        // Phase 2
+        await tester.runTest(
+            `${contractName} Scenario 0, Phase 2`,
+            Scenario0Helper,
+            'phaseTwo',
+            'send',
+            [
+                CToken.options.address,
+                DToken.options.address,
+                Underlying.options.address
+            ],
+            true,
+            receipt => {
+                const events = tester.getEvents(receipt, contractNames)
+
+                console.log(JSON.stringify(events, null, 2));
+            }
+        );
 
         await tester.revertToSnapShot(snapshotId);
     }
@@ -3320,7 +3390,7 @@ async function runAllTests(web3, context, contractName, contract) {
     // await testExchangeRate();
     // await testAccrueInterestFromAnyAccount();
     // await testPullSurplusBeforeMints();
-    await getUnderlyingTokens(tester.address);
+    await getUnderlyingTokens();
     // await testCannotMintBeforeApproval();
     // await testMint();
     // await testPullSurplusAfterMint();
