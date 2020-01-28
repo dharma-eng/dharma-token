@@ -459,7 +459,6 @@ async function runAllTests(web3, context, contractName, contract) {
                 assert.strictEqual(value, cTokenSupplyRate.toString())
             }
         );
-
     }
 
     async function testPullSurplusBeforeMints() {
@@ -2542,9 +2541,11 @@ async function runAllTests(web3, context, contractName, contract) {
                     events, 0, contractName, web3, tester, storedDTokenExchangeRate, storedCTokenExchangeRate
                 );
 
-                dTokentransferAmount = (initialUnderlyingAmount.mul(tester.SCALING_FACTOR)).div(dTokenExchangeRate);
+                dTokentransferAmount = (
+                    initialUnderlyingAmount.mul(tester.SCALING_FACTOR)
+                ).div(dTokenExchangeRate).add(tester.ONE);
 
-                leftOverBalance = balance.sub(dTokentransferAmount)
+                leftOverBalance = balance.sub(dTokentransferAmount);
 
                 const tokenTransferEvent = events[1];
                 assert.strictEqual(
@@ -2573,7 +2574,9 @@ async function runAllTests(web3, context, contractName, contract) {
             }
         );
 
-        const underlyingAmountTransfered = (dTokentransferAmount.mul(dTokenExchangeRate)).div(tester.SCALING_FACTOR);
+        const underlyingAmountTransfered = (
+            dTokentransferAmount.mul(dTokenExchangeRate)
+        ).div(tester.SCALING_FACTOR);
 
         await tester.runTest(
             `Check transfer recipient received correct amount`,
@@ -2721,7 +2724,7 @@ async function runAllTests(web3, context, contractName, contract) {
 
                 calculatedTransferAmount = (
                     transferUnderlyingAmount.mul(tester.SCALING_FACTOR)
-                ).div(dTokenExchangeRate);
+                ).div(dTokenExchangeRate).add(tester.ONE);
 
                 assert.strictEqual(transferReturnValues.from, tester.address);
                 assert.strictEqual(transferReturnValues.to, tester.addressTwo);
@@ -2738,7 +2741,7 @@ async function runAllTests(web3, context, contractName, contract) {
 
                 const { returnValues: approvalReturnValues } = approvalEvent;
 
-                approvedAllowance = dTokenAllowance.sub(calculatedTransferAmount);
+                approvedAllowance = dTokenAllowance.sub(calculatedTransferAmount)
 
                 assert.strictEqual(approvalReturnValues.owner, tester.address);
                 assert.strictEqual(approvalReturnValues.spender, tester.addressTwo);
@@ -2758,7 +2761,7 @@ async function runAllTests(web3, context, contractName, contract) {
             value => {
                 assert.strictEqual(value, calculatedTransferAmount.toString());
             },
-        )
+        );
 
         await tester.runTest(
             `Check transfer recipient has correct allowance`,
@@ -2770,7 +2773,7 @@ async function runAllTests(web3, context, contractName, contract) {
             value => {
                 assert.strictEqual(value, approvedAllowance.toString());
             },
-        )
+        );
 
         await tester.revertToSnapShot(snapshotId);
     }
@@ -2887,7 +2890,7 @@ async function runAllTests(web3, context, contractName, contract) {
 
                 calculatedTransferAmount = (
                     transferUnderlyingAmount.mul(tester.SCALING_FACTOR)
-                ).div(dTokenExchangeRate);
+                ).div(dTokenExchangeRate).add(tester.ONE);
 
                 assert.strictEqual(transferReturnValues.from, tester.address);
                 assert.strictEqual(transferReturnValues.to, tester.addressTwo);
