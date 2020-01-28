@@ -3332,10 +3332,11 @@ async function testAdvanceTimeAndBlockInDays(web3, tester) {
     const DAYS = 1;
     const SECONDS_PER_BLOCK = 15;
     const SECONDS_IN_A_DAY = 24 * 60 * 60;
+    const MILISECONDS_IN_A_DAY = SECONDS_IN_A_DAY * 1000;
     const BLOCKS_PER_DAY = SECONDS_IN_A_DAY / SECONDS_PER_BLOCK;
 
     const blocksToAdvance = DAYS * BLOCKS_PER_DAY;
-    const timeToAdvance = SECONDS_IN_A_DAY * DAYS * 1000;
+    const timeToAdvance = MILISECONDS_IN_A_DAY * DAYS;
 
     const blockBeforeSnapshot = await web3.eth.getBlock('latest');
     const { timestamp: timeBeforeSnapshot, number: blockNumberBeforeSnapshot } = blockBeforeSnapshot;
@@ -3351,7 +3352,7 @@ async function testAdvanceTimeAndBlockInDays(web3, tester) {
     assert.strictEqual(blockNumberBeforeSnapshot + blocksToAdvance, currentBlockNumber);
 
     const timeDifference = currentTime - timeBeforeSnapshot;
-    const differenceInDays = Math.ceil(timeDifference / (1000 * 3600 * 24));
+    const differenceInDays = Math.ceil(timeDifference / MILISECONDS_IN_A_DAY);
 
     assert.strictEqual(differenceInDays, DAYS);
 
