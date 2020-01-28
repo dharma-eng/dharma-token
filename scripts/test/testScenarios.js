@@ -522,7 +522,7 @@ async function runAllTests(web3, context, contractName, contract) {
         )
     }
 
-    async function getUnderlyingTokens() {
+    async function getUnderlyingTokens(address) {
         // Get some underlying tokens from Uniswap
         let priceOfOneHundredUnderlying;
         await tester.runTest(
@@ -545,7 +545,7 @@ async function runAllTests(web3, context, contractName, contract) {
             ['1'.padEnd(underlyingDecimals[contractName] + 3, '0'), '9999999999'],
             true,
             receipt => {},
-            tester.address,
+            address,
             priceOfOneHundredUnderlying
         )
 
@@ -554,7 +554,7 @@ async function runAllTests(web3, context, contractName, contract) {
             Underlying,
             'balanceOf',
             'call',
-            [tester.address],
+            [address],
             true,
             value => {
                 assert.strictEqual(
@@ -3288,150 +3288,64 @@ async function runAllTests(web3, context, contractName, contract) {
      *  Account starts with 100 DAI/USDC tokens.
      */
     async function testScenario0() {
+        console.log("Scenario 0 ");
         const snapshot = await tester.takeSnapshot();
         const { result: snapshotId } = snapshot;
 
-        let underlyingBalance;
-        await tester.runTest(
-            `Check that we start with 100 ${underlyingSymbols[contractName]}`,
-            Underlying,
-            'balanceOf',
-            'call',
-            [tester.address],
-            true,
-            value => {
-                underlyingBalance = web3.utils.toBN(value);
-                assert.strictEqual(
-                    value, '1'.padEnd(underlyingDecimals[contractName] + 3, '0')
-                )
-            },
+        const Scenario0Helper = await tester.runTest(
+            `Mock Scenario0Helper contract deployment for ${contractName}`,
+            tester.Scenario0HelperDeployer,
+            '',
+            'deploy',
         );
 
-        await tester.runTest(
-            `${underlyingSymbols[contractName]} can approve ${contractName} in order to mint dTokens`,
-            Underlying,
-            'approve',
-            'send',
-            [DToken.options.address, constants.FULL_APPROVAL]
-        );
+        const { options: { address: scenario0HelperAddress  } } = Scenario0Helper;
 
-        await tester.runTest(
-            `${contractName} can mint dTokens`,
-            DToken,
-            'mint',
-            'send',
-            [underlyingBalance.toString()],
-            true,
-        );
-
-        let block = await web3.eth.getBlock('latest');
-        const { number: blockNumber } = block;
-
-        const blocksToAdvance  = 1000;
-        await advanceByBlocks(blocksToAdvance, tester);
-
-        block = await web3.eth.getBlock('latest');
-        const { number: currentBlockNumber } = block;
-
-        assert.strictEqual(currentBlockNumber, blockNumber + blocksToAdvance);
-
-        let currentDTokenAccountBalance;
-        await tester.runTest(
-            `Get ${tokenSymbols[contractName]} balance to redeem`,
-            DToken,
-            'balanceOf',
-            'call',
-            [tester.address],
-            true,
-            value => {
-                currentDTokenAccountBalance = web3.utils.toBN(value)
-                console.log(`currentDTokenAccountBalance ${currentDTokenAccountBalance.toString()}`)
-            }
-        );
-
-        [ storedDTokenExchangeRate,
-            storedCTokenExchangeRate
-        ] = await prepareToValidateAccrual(web3, DToken);
-
-        let dTokenExchangeRate;
-        let cTokenExchangeRate;
-        await tester.runTest(
-            `${contractName} can redeem dTokens for underlying`,
-            DToken,
-            'redeem',
-            'send',
-            [currentDTokenAccountBalance.toString()],
-            true,
-            async receipt => {
-                const extraEvents = contractName === 'Dharma Dai' ? 6 : 0
-
-                const events = tester.getEvents(receipt, contractNames);
-
-                console.log(JSON.stringify(events, null, 2));
-
-                [dTokenExchangeRate, cTokenExchangeRate] = validateDTokenAccrueEvent(
-                    events, 0, contractName, web3, tester, storedDTokenExchangeRate, storedCTokenExchangeRate
-                );
-            }
-        );
-
-        await tester.runTest(
-            `Get ${tokenSymbols[contractName]} balance to redeem`,
-            Underlying,
-            'balanceOf',
-            'call',
-            [tester.address],
-            true,
-            value => {
-                // TODO: validate, this value should be initial underlying + 90% of interest.
-                underlyingBalance = web3.utils.toBN(value)
-            }
-        );
+        await getUnderlyingTokens(scenario0HelperAddress);
 
         await tester.revertToSnapShot(snapshotId);
     }
 
-    // Test snapshot and advance (time/block) functions
-    await testSnapshot(web3, tester);
-    await testAdvanceTimeAndBlockInDays(web3, tester);
-
-    // Take initial snapshot to run function tests, and revert before starting scenarios.
-    const initialSnapshot = await tester.takeSnapshot();
-    const { result: initialSnapshotId } = initialSnapshot;
-    
-    await testPureFunctions();
-    await testAccrueInterest();
-    await testSupplyRatePerBlock();
-    await testExchangeRate();
-    await testAccrueInterestFromAnyAccount();
-    await testPullSurplusBeforeMints();
-    await getUnderlyingTokens();
-    await testCannotMintBeforeApproval();
-    await testMint();
-    await testPullSurplusAfterMint();
-    await testRedeem();
-    await testRedeemTooMuch();
-    await testRedeemUnderlying();
-    await testRedeemToCToken();
-    await testRedeemUnderlyingToCToken();
-    await testMintViaCToken();
-    await testTransfer();
-    await testTransferFrom();
-    await testTransferFromFullAllowance();
-    await testAllowance();
-    await testTransferUnderlying();
-    await testTransferUnderlyingFrom();
-    await testTransferUnderlyingFromFullAllowance();
-    await testApprove();
-    await testSpreadPerBlock();
-    await testRequireNonNull();
-    await testBlockAccrual();
-    
-    await tester.revertToSnapShot(initialSnapshotId);
+    // // Test snapshot and advance (time/block) functions
+    // await testSnapshot(web3, tester);
+    // await testAdvanceTimeAndBlockInDays(web3, tester);
+    //
+    // // Take initial snapshot to run function tests, and revert before starting scenarios.
+    // const initialSnapshot = await tester.takeSnapshot();
+    // const { result: initialSnapshotId } = initialSnapshot;
+    //
+    // await testPureFunctions();
+    // await testAccrueInterest();
+    // await testSupplyRatePerBlock();
+    // await testExchangeRate();
+    // await testAccrueInterestFromAnyAccount();
+    // await testPullSurplusBeforeMints();
+    await getUnderlyingTokens(tester.address);
+    // await testCannotMintBeforeApproval();
+    // await testMint();
+    // await testPullSurplusAfterMint();
+    // await testRedeem();
+    // await testRedeemTooMuch();
+    // await testRedeemUnderlying();
+    // await testRedeemToCToken();
+    // await testRedeemUnderlyingToCToken();
+    // await testMintViaCToken();
+    // await testTransfer();
+    // await testTransferFrom();
+    // await testTransferFromFullAllowance();
+    // await testAllowance();
+    // await testTransferUnderlying();
+    // await testTransferUnderlyingFrom();
+    // await testTransferUnderlyingFromFullAllowance();
+    // await testApprove();
+    // await testSpreadPerBlock();
+    // await testRequireNonNull();
+    // await testBlockAccrual();
+    //
+    // await tester.revertToSnapShot(initialSnapshotId);
 
     // Start testing scenarios
-    // await getUnderlyingTokens();
-    // await testScenario0();
+    await testScenario0();
 
     console.log(
         `completed ${tester.passed + tester.failed} test${tester.passed + tester.failed === 1 ? '' : 's'} ` +
@@ -3448,6 +3362,7 @@ async function runAllTests(web3, context, contractName, contract) {
     // exit.
     return 0
 }
+
 
 async function getOrDeployDTokenContract(contract, tester, contractName) {
     if (contract) {
