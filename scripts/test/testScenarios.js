@@ -3209,57 +3209,156 @@ async function runAllTests(web3, context, contractName, contract) {
 
     /**
      * Send/mint in underlying, receive dTokens, wait for `t` blocks, redeem dTokens
-     *  - [ ] user receives original underlying + 90% of total compound interest
+     *  - [ ] account receives original underlying + 90% of total compound interest
      *  - [ ] surplus underlying contains 10% of total compound interest
-     *  - [ ] user's balance of dTokens / underlying is 0
+     *  - [ ] account's balance of dTokens / underlying is 0
      *  - [ ] quoted supply rate at `t0` is correct
      *  - [ ] cToken `AccrueInterest` + `Mint` + `Redeem` events, dToken `Accrue` + `Mint` + `Redeem` + `Transfer` events, and underlying `Transfer` events are all present & correct
+     *
+     *  Account starts with 100 DAI/USDC tokens.
      */
     async function testScenario0() {
-        const initialSnapshot = await tester.takeSnapshot();
-        const { result: initialSnapshotId } = initialSnapshot;
+        const snapshot = await tester.takeSnapshot();
+        const { result: snapshotId } = snapshot;
 
-        await tester.revertToSnapShot(initialSnapshotId);
+        let underlyingBalance;
+        await tester.runTest(
+            `Check that we start with 100 ${underlyingSymbols[contractName]}`,
+            Underlying,
+            'balanceOf',
+            'call',
+            [tester.address],
+            true,
+            value => {
+                underlyingBalance = web3.utils.toBN(value);
+                assert.strictEqual(
+                    value, '1'.padEnd(underlyingDecimals[contractName] + 3, '0')
+                )
+            },
+        );
+
+        await tester.runTest(
+            `${underlyingSymbols[contractName]} can approve ${contractName} in order to mint dTokens`,
+            Underlying,
+            'approve',
+            'send',
+            [DToken.options.address, constants.FULL_APPROVAL]
+        );
+
+        await tester.runTest(
+            `${contractName} can mint dTokens`,
+            DToken,
+            'mint',
+            'send',
+            [underlyingBalance.toString()],
+            true,
+        );
+
+        let block = await web3.eth.getBlock('latest');
+        const { number: blockNumber } = block;
+
+        const blocksToAdvance  = 1000;
+        await advanceByBlocks(blocksToAdvance, tester);
+
+        block = await web3.eth.getBlock('latest');
+        const { number: currentBlockNumber } = block;
+
+        assert.strictEqual(currentBlockNumber, blockNumber + blocksToAdvance);
+
+        let currentDTokenAccountBalance;
+        await tester.runTest(
+            `Get ${tokenSymbols[contractName]} balance to redeem`,
+            DToken,
+            'balanceOf',
+            'call',
+            [tester.address],
+            true,
+            value => {
+                currentDTokenAccountBalance = web3.utils.toBN(value)
+                console.log(`currentDTokenAccountBalance ${currentDTokenAccountBalance.toString()}`)
+            }
+        );
+
+        [ storedDTokenExchangeRate,
+            storedCTokenExchangeRate
+        ] = await prepareToValidateAccrual(web3, DToken);
+
+        let dTokenExchangeRate;
+        let cTokenExchangeRate;
+        await tester.runTest(
+            `${contractName} can redeem dTokens for underlying`,
+            DToken,
+            'redeem',
+            'send',
+            [currentDTokenAccountBalance.toString()],
+            true,
+            async receipt => {
+                const extraEvents = contractName === 'Dharma Dai' ? 6 : 0
+
+                const events = tester.getEvents(receipt, contractNames);
+
+                console.log(JSON.stringify(events, null, 2));
+
+                [dTokenExchangeRate, cTokenExchangeRate] = validateDTokenAccrueEvent(
+                    events, 0, contractName, web3, tester, storedDTokenExchangeRate, storedCTokenExchangeRate
+                );
+            }
+        );
+
+        await tester.runTest(
+            `Get ${tokenSymbols[contractName]} balance to redeem`,
+            Underlying,
+            'balanceOf',
+            'call',
+            [tester.address],
+            true,
+            value => {
+                // TODO: validate, this value should be initial underlying + 90% of interest.
+                underlyingBalance = web3.utils.toBN(value)
+            }
+        );
+
+        await tester.revertToSnapShot(snapshotId);
     }
 
     // Test snapshot and advance (time/block) functions
-    await testSnapshot(web3, tester);
-    await testAdvanceTimeAndBlockInDays(web3, tester);
+    // await testSnapshot(web3, tester);
+    // await testAdvanceTimeAndBlockInDays(web3, tester);
 
     // Take initial snapshot to run function tests, and revert before starting scenarios.
-    const initialSnapshot = await tester.takeSnapshot();
-    const { result: initialSnapshotId } = initialSnapshot;
-
-    await testPureFunctions();
-    await testInitialExchangeRates();
-    await testAccrueInterest();
-    await testSupplyRatePerBlock();
-    await testExchangeRate();
-    await testAccrueInterestFromAnyAccount();
-    await testPullSurplusBeforeMints();
-    await getUnderlyingTokens();
-    await testCannotMintBeforeApproval();
-    await testMint();
-    await testPullSurplusAfterMint();
-    await testRedeem();
-    await testRedeemTooMuch();
-    await testRedeemUnderlying();
-    await testRedeemToCToken();
-    await testRedeemUnderlyingToCToken();
-    await testMintViaCToken();
-    await testTransfer();
-    await testTransferFrom();
-    await testTransferFromFullAllowance();
-    await testAllowance();
-    await testTransferUnderlying();
-    await testTransferUnderlyingFrom();
-    await testTransferUnderlyingFromFullAllowance();
-    await testApprove();
-    await testSpreadPerBlock();
-    await testRequireNonNull();
-    await testBlockAccrual();
-
-    await tester.revertToSnapShot(initialSnapshotId);
+    // const initialSnapshot = await tester.takeSnapshot();
+    // const { result: initialSnapshotId } = initialSnapshot;
+    //
+    // await testPureFunctions();
+    // await testInitialExchangeRates();
+    // await testAccrueInterest();
+    // await testSupplyRatePerBlock();
+    // await testExchangeRate();
+    // await testAccrueInterestFromAnyAccount();
+    // await testPullSurplusBeforeMints();
+    // await getUnderlyingTokens();
+    // await testCannotMintBeforeApproval();
+    // await testMint();
+    // await testPullSurplusAfterMint();
+    // await testRedeem();
+    // await testRedeemTooMuch();
+    // await testRedeemUnderlying();
+    // await testRedeemToCToken();
+    // await testRedeemUnderlyingToCToken();
+    // await testMintViaCToken();
+    // await testTransfer();
+    // await testTransferFrom();
+    // await testTransferFromFullAllowance();
+    // await testAllowance();
+    // await testTransferUnderlying();
+    // await testTransferUnderlyingFrom();
+    // await testTransferUnderlyingFromFullAllowance();
+    // await testApprove();
+    // await testSpreadPerBlock();
+    // await testRequireNonNull();
+    // await testBlockAccrual();
+    //
+    // await tester.revertToSnapShot(initialSnapshotId);
 
     // Start testing scenarios
     await getUnderlyingTokens();
