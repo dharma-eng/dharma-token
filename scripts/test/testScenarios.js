@@ -3412,48 +3412,47 @@ async function runAllTests(web3, context, contractName, contract) {
     }
 
     // Test snapshot and advance (time/block) functions
-    // await testSnapshot(web3, tester);
-    // await testAdvanceTimeAndBlockInDays(web3, tester);
+    await testSnapshot(web3, tester);
+    await testAdvanceTimeAndBlockInDays(web3, tester);
 
     // Take initial snapshot to run function tests, and revert before starting scenarios.
-    // const initialSnapshot = await tester.takeSnapshot();
-    // const { result: initialSnapshotId } = initialSnapshot;
-    //
-    // await testPureFunctions();
-    // await testInitialExchangeRates();
-    // await testAccrueInterest();
-    // await testSupplyRatePerBlock();
-    // await testExchangeRate();
-    // await testAccrueInterestFromAnyAccount();
-    // await testPullSurplusBeforeMints();
-    // await getUnderlyingTokens();
-    // await testCannotMintBeforeApproval();
-    // await testMint();
-    // await testPullSurplusAfterMint();
-    // await testRedeem();
-    // await testRedeemTooMuch();
-    // await testRedeemUnderlying();
-    // await testRedeemToCToken();
-    // await testRedeemUnderlyingToCToken();
-    // await testMintViaCToken();
-    // await testTransfer();
-    // await testTransferFrom();
-    // await testTransferFromFullAllowance();
-    // await testAllowance();
-    // await testTransferUnderlying();
-    // await testTransferUnderlyingFrom();
-    // await testTransferUnderlyingFromFullAllowance();
-    // await testApprove();
-    // await testSpreadPerBlock();
-    // await testRequireNonNull();
-    // await testBlockAccrual();
-    //
-    // await tester.revertToSnapShot(initialSnapshotId);
+    const initialSnapshot = await tester.takeSnapshot();
+    const { result: initialSnapshotId } = initialSnapshot;
+    
+    await testPureFunctions();
+    await testInitialExchangeRates();
+    await testAccrueInterest();
+    await testSupplyRatePerBlock();
+    await testExchangeRate();
+    await testAccrueInterestFromAnyAccount();
+    await testPullSurplusBeforeMints();
+    await getUnderlyingTokens();
+    await testCannotMintBeforeApproval();
+    await testMint();
+    await testPullSurplusAfterMint();
+    await testRedeem();
+    await testRedeemTooMuch();
+    await testRedeemUnderlying();
+    await testRedeemToCToken();
+    await testRedeemUnderlyingToCToken();
+    await testMintViaCToken();
+    await testTransfer();
+    await testTransferFrom();
+    await testTransferFromFullAllowance();
+    await testAllowance();
+    await testTransferUnderlying();
+    await testTransferUnderlyingFrom();
+    await testTransferUnderlyingFromFullAllowance();
+    await testApprove();
+    await testSpreadPerBlock();
+    await testRequireNonNull();
+    await testBlockAccrual();
+    
+    await tester.revertToSnapShot(initialSnapshotId);
 
     // Start testing scenarios
-    await getUnderlyingTokens();
-    await testScenario0();
-
+    // await getUnderlyingTokens();
+    // await testScenario0();
 
     console.log(
         `completed ${tester.passed + tester.failed} test${tester.passed + tester.failed === 1 ? '' : 's'} ` +
