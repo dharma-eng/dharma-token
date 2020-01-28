@@ -4,12 +4,20 @@ var util = require('ethereumjs-util')
 
 // artifacts: compiled contracts
 // abi + contract
-const DharmaDaiArtifact = require('../../build/contracts/DharmaDai.json');
-const DharmaUSDCArtifact = require('../../build/contracts/DharmaUSDC.json');
+const DharmaDaiArtifact = require('../../build/contracts/DharmaDaiImplementationV0.json');
+const DharmaUSDCArtifact = require('../../build/contracts/DharmaUSDCImplementationV0.json');
+
+const DharmaDaiInitializerArtifact = require('../../build/contracts/DharmaDaiInitializer.json');
+const DharmaUSDCInitializerArtifact = require('../../build/contracts/DharmaUSDCInitializer.json');
+
 // abi
 const IERC20Artifact = require('../../build/contracts/ERC20Interface.json');
 const ICTokenArtifact = require('../../build/contracts/CTokenInterface.json');
 const UniswapArtifact = require('../../build/contracts/UniswapInterface.json');
+
+const UpgradeBeaconControllerArtifact = require('../../build/contracts/DharmaUpgradeBeaconController.json');
+const UpgradeBeaconArtifact = require('../../build/contracts/UpgradeBeacon.json');
+const UpgradeBeaconProxyArtifact = require('../../build/contracts/UpgradeBeaconProxy.json');
 
 // used to wait for more confirmations
 function longer() {
@@ -38,6 +46,44 @@ class Tester {
         const DharmaUSDCDeployer = new this.web3.eth.Contract(DharmaUSDCArtifact.abi);
         DharmaUSDCDeployer.options.data = DharmaUSDCArtifact.bytecode;
         this.DharmaUSDCDeployer = DharmaUSDCDeployer;
+
+        const DharmaDaiInitializerDeployer = new this.web3.eth.Contract(
+            DharmaDaiInitializerArtifact.abi
+        );
+        DharmaDaiInitializerDeployer.options.data = (
+            DharmaDaiInitializerArtifact.bytecode
+        );
+        this.DharmaDaiInitializerDeployer = DharmaDaiInitializerDeployer;
+
+        const DharmaUSDCInitializerDeployer = new this.web3.eth.Contract(
+            DharmaUSDCInitializerArtifact.abi
+        );
+        DharmaUSDCInitializerDeployer.options.data = (
+            DharmaUSDCInitializerArtifact.bytecode
+        );
+        this.DharmaUSDCInitializerDeployer = DharmaUSDCInitializerDeployer;
+
+        const UpgradeBeaconControllerDeployer = new this.web3.eth.Contract(
+            UpgradeBeaconControllerArtifact.abi
+        );
+        UpgradeBeaconControllerDeployer.options.data = (
+            UpgradeBeaconControllerArtifact.bytecode
+        );
+        this.UpgradeBeaconControllerDeployer = UpgradeBeaconControllerDeployer;
+
+        const UpgradeBeaconDeployer = new this.web3.eth.Contract(
+            UpgradeBeaconArtifact.abi
+        );
+        UpgradeBeaconDeployer.options.data = UpgradeBeaconArtifact.bytecode;
+        this.UpgradeBeaconDeployer = UpgradeBeaconDeployer;
+
+        const UpgradeBeaconProxyDeployer = new this.web3.eth.Contract(
+            UpgradeBeaconProxyArtifact.abi
+        );
+        UpgradeBeaconProxyDeployer.options.data = (
+            UpgradeBeaconProxyArtifact.bytecode
+        );
+        this.UpgradeBeaconProxyDeployer = UpgradeBeaconProxyDeployer;
 
         this.DAI = new this.web3.eth.Contract(
             IERC20Artifact.abi, constants.DAI_MAINNET_ADDRESS

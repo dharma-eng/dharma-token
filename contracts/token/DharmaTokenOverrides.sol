@@ -22,8 +22,6 @@ contract DharmaTokenOverrides {
 
   function _getUnderlyingName() internal pure returns (string memory underlyingName);
 
-  function _getUnderlyingDecimals() internal pure returns (uint8 decimals);
-
   function _getUnderlying() internal pure returns (address underlying);
 
   function _getCTokenSymbol() internal pure returns (string memory cTokenSymbol);

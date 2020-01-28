@@ -9,18 +9,17 @@ import "../../interfaces/PotInterface.sol";
 
 
 /**
- * @title DharmaDai
+ * @title DharmaDaiImplementationV0
  * @author 0age (dToken mechanics derived from Compound cTokens, ERC20 methods
  * derived from Open Zeppelin's ERC20 contract)
- * @notice Initial prototype for a cDai wrapper token. This version is not
- * upgradeable, and serves as an initial test of the eventual dDai mechanics.
- * The dDai exchange rate will grow at 90% the rate of the cDai exchange rate.
+ * @notice Dharma Dai is an interest-bearing token, with cDai as the backing
+ * token and Dai as the underlying token. The dDai exchange rate will initially
+ * increase at 90% the rate of the cDai exchange rate.
  */
-contract DharmaDai is DharmaToken {
+contract DharmaDaiImplementationV0 is DharmaToken {
   string internal constant _NAME = "Dharma Dai";
   string internal constant _SYMBOL = "dDai";
   string internal constant _UNDERLYING_NAME = "Dai";
-  uint8 internal constant _UNDERLYING_DECIMALS = 18;
   string internal constant _CTOKEN_SYMBOL = "cDai";
 
   CTokenInterface internal constant _CDAI = CTokenInterface(
@@ -97,10 +96,6 @@ contract DharmaDai is DharmaToken {
 
   function _getUnderlying() internal pure returns (address underlying) {
     underlying = address(_DAI);
-  }
-
-  function _getUnderlyingDecimals() internal pure returns (uint8 decimals) {
-    decimals = _UNDERLYING_DECIMALS;
   }
 
   function _getCTokenSymbol() internal pure returns (string memory cTokenSymbol) {

@@ -31,33 +31,6 @@ contract DharmaToken is ERC20Interface, DTokenInterface, DharmaTokenHelpers {
   mapping (address => uint256) private _balances;
   mapping (address => mapping (address => uint256)) private _allowances;
 
-  // TEMPORARY - replace with initializer for upgradeable contracts.
-  constructor() public {
-    // Instantiate interfaces for the underlying token and the backing cToken.
-    ERC20Interface underlying = ERC20Interface(_getUnderlying());
-    CTokenInterface cToken = CTokenInterface(_getCToken());
-
-    // Approve cToken to transfer underlying for this contract in order to mint.
-    require(
-      underlying.approve(address(cToken), uint256(-1)), "Approval failed."
-    );
-
-    // Initial dToken exchange rate is 1-to-1 (dTokens have 8 decimals).
-    uint256 dTokenExchangeRate = 10 ** (
-      uint256(10).add(uint256(_getUnderlyingDecimals()))
-    );
-
-    // Accrue cToken interest and retrieve the current cToken exchange rate.
-    uint256 cTokenExchangeRate = cToken.exchangeRateCurrent();
-
-    // Initialize accrual index with current block number and exchange rates.
-    AccrualIndex storage accrualIndex = _accrualIndex;
-    accrualIndex.dTokenExchangeRate = _safeUint112(dTokenExchangeRate);
-    accrualIndex.cTokenExchangeRate = _safeUint112(cTokenExchangeRate);
-    accrualIndex.block = uint32(block.number);
-    emit Accrue(dTokenExchangeRate, cTokenExchangeRate);
-  }
-
   /**
    * @notice Transfer `underlyingToSupply` underlying tokens from `msg.sender`
    * to this contract, use them to mint cTokens as backing, and mint dTokens to

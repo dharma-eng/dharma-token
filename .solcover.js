@@ -1,7 +1,10 @@
 module.exports = {
   skipFiles: [
     'Migrations.sol',
-    'test/Uniswapper.sol'
+    'test/DharmaUpgradeBeaconController.sol',
+    'test/Uniswapper.sol',
+    'test/UpgradeBeacon.sol',
+    'test/UpgradeBeaconProxy.sol'
   ],
   providerOptions: {
     fork: 'https://mainnet.infura.io/v3/4c96c6bab18845dba07ad14cc0c18998',

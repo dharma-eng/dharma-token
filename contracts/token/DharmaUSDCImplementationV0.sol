@@ -8,18 +8,17 @@ import "../../interfaces/CUSDCInterestRateModelInterface.sol";
 
 
 /**
- * @title DharmaUSDC
+ * @title DharmaUSDCImplementationV0
  * @author 0age (dToken mechanics derived from Compound cTokens, ERC20 methods
  * derived from Open Zeppelin's ERC20 contract)
- * @notice Initial prototype for a cUSDC wrapper token. This version is not
- * upgradeable, and serves as an initial test of the eventual dUSDC mechanics.
- * The dUSDC exchange rate will grow at 90% the rate of the cUSDC exchange rate.
+ * @notice Dharma USD Coin is an interest-bearing token, with cUSDC as the
+ * backing token and USD Coin as the underlying token. The dUSDC exchange rate
+ * will initially increase at 90% the rate of the cUSDC exchange rate.
  */
-contract DharmaUSDC is DharmaToken {
-  string internal constant _NAME = "Dharma USDC";
+contract DharmaUSDCImplementationV0 is DharmaToken {
+  string internal constant _NAME = "Dharma USD Coin";
   string internal constant _SYMBOL = "dUSDC";
   string internal constant _UNDERLYING_NAME = "USD Coin";
-  uint8 internal constant _UNDERLYING_DECIMALS = 6;
   string internal constant _CTOKEN_SYMBOL = "cUSDC";
 
   CTokenInterface internal constant _CUSDC = CTokenInterface(
@@ -103,10 +102,6 @@ contract DharmaUSDC is DharmaToken {
 
   function _getUnderlying() internal pure returns (address underlying) {
     underlying = address(_USDC);
-  }
-
-  function _getUnderlyingDecimals() internal pure returns (uint8 decimals) {
-    decimals = _UNDERLYING_DECIMALS;
   }
 
   function _getCTokenSymbol() internal pure returns (string memory cTokenSymbol) {

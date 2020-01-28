@@ -6,22 +6,22 @@ let contractNames = constants.CONTRACT_NAMES;
 
 const tokenSymbols = {
     "Dharma Dai": "dDai",
-    "Dharma USDC": "dUSDC"
+    "Dharma USD Coin": "dUSDC"
 };
 
 const underlyingSymbols = {
     "Dharma Dai": "Dai",
-    "Dharma USDC": "USDC"
+    "Dharma USD Coin": "USDC"
 };
 
 const underlyingDecimals = {
     "Dharma Dai": 18,
-    "Dharma USDC": 6   
+    "Dharma USD Coin": 6   
 }
 
 const cTokenSymbols = {
     "Dharma Dai": "cDai",
-    "Dharma USDC": "cUSDC"
+    "Dharma USD Coin": "cUSDC"
 };
 
 const DTokenDecimals = 8;
@@ -120,7 +120,93 @@ async function runAllTests(web3, context, contractName, contract) {
     // Test takeSnapshot and revertToSnapshot
     await testSnapshot(web3, tester);
 
-    const DToken = await getOrDeployDTokenContract(contract, tester, contractName);
+    const DTokenImplementation = await getOrDeployDTokenContract(contract, tester, contractName);
+
+    const { options: { address: dTokenImplementationAddress  } } = DTokenImplementation;
+
+    const InitializerDeployer = contractName === 'Dharma Dai'
+      ? tester.DharmaDaiInitializerDeployer
+      : tester.DharmaUSDCInitializerDeployer
+
+    const DTokenInitializerImplementation = await tester.runTest(
+        `Initializer implementation contract deployment for ${contractName}`,
+        InitializerDeployer,
+        '',
+        'deploy'
+    );
+
+    const UpgradeBeaconController = await tester.runTest(
+        `Mock UpgradeBeaconController contract deployment for ${contractName}`,
+        tester.UpgradeBeaconControllerDeployer,
+        '',
+        'deploy'
+    );
+
+    const UpgradeBeacon = await tester.runTest(
+        `Mock UpgradeBeacon contract deployment for ${contractName}`,
+        tester.UpgradeBeaconDeployer,
+        '',
+        'deploy',
+        [UpgradeBeaconController.options.address]
+    );
+
+    const UpgradeBeaconProxy = await tester.runTest(
+        `Mock UpgradeBeaconProxy contract deployment for ${contractName}`,
+        tester.UpgradeBeaconProxyDeployer,
+        '',
+        'deploy',
+        [UpgradeBeacon.options.address]
+    );
+
+    await tester.runTest(
+        `Set ${contractName} initializer implementation`,
+        UpgradeBeaconController,
+        'upgrade',
+        'send',
+        [
+            UpgradeBeacon.options.address,
+            DTokenInitializerImplementation.options.address
+        ]
+    );
+
+    const DTokenInitializer = new web3.eth.Contract(
+        DTokenInitializerImplementation.options.jsonInterface,
+        UpgradeBeaconProxy.options.address
+    );
+
+    await tester.runTest(
+        `Initialize ${contractName}`,
+        DTokenInitializer,
+        'initialize',
+        'send',
+        [],
+        true,
+        receipt => {
+            // TODO: validate events
+        }
+    );
+
+    const initialExchangeRates = getExchangeRates(web3);
+
+    let dTokenExchangeRate = initialExchangeRates[contractName];
+
+    [storedDTokenExchangeRate] = await prepareToValidateAccrual(web3, DTokenInitializer)
+    assert.strictEqual(
+        storedDTokenExchangeRate.toString(), dTokenExchangeRate.rate.toString()
+    )
+
+    await tester.runTest(
+        `Set ${contractName} implementation V0`,
+        UpgradeBeaconController,
+        'upgrade',
+        'send',
+        [UpgradeBeacon.options.address, dTokenImplementationAddress]
+    );
+
+    const DToken = new web3.eth.Contract(
+        DTokenImplementation.options.jsonInterface,
+        UpgradeBeaconProxy.options.address
+    );
 
     const CToken = contractName === 'Dharma Dai' ? tester.CDAI : tester.CUSDC;
 
@@ -139,24 +225,6 @@ async function runAllTests(web3, context, contractName, contract) {
     });
 
     await testPureFunctions(tester, DToken, CToken, Underlying, contractName, tokenSymbols[contractName]);
-
-    const initialExchangeRates = getExchangeRates(web3);
-
-    let dTokenExchangeRate = initialExchangeRates[contractName];
-    // coverage mines a few blocks prior to reaching this point - skip this test
-    if (context !== 'coverage') {
-        await tester.runTest(
-            `${contractName} exchange rate starts at ${dTokenExchangeRate.notation}`,
-            DToken,
-            'exchangeRateCurrent',
-            'call',
-            [],
-            true,
-            value => {
-                assert.strictEqual(value, dTokenExchangeRate.rate.toString())
-            }
-        )
-    }
 
     await tester.runTest(
         `Accrue ${cTokenSymbols[contractName]} interest`,
@@ -3187,7 +3255,7 @@ function getExchangeRates(web3) {
             notation: "1e28",
             rate: dDAIExchangeRate,
         },
-        "Dharma USDC": {
+        "Dharma USD Coin": {
             notation: "1e16",
             rate: dUSDCExchangeRate
         }
