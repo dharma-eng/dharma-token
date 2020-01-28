@@ -195,9 +195,9 @@ class Tester {
                 id: new Date().getTime()
             }, (err, result) => {
                 if (err) { return reject(err) }
-                const newBlockHash = this.web3.eth.getBlock('latest').hash
-
-                return resolve(newBlockHash)
+                // const newBlockHash = this.web3.eth.getBlock('latest').hash
+                // return resolve(newBlockHash)
+                resolve()
             })
         })
     }

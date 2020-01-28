@@ -3202,10 +3202,25 @@ async function runAllTests(web3, context, contractName, contract) {
         await tester.revertToSnapShot(snapshotId);
     }
 
+    /**
+     * Send/mint in underlying, receive dTokens, wait for `t` blocks, redeem dTokens
+     *  - [ ] user receives original underlying + 90% of total compound interest
+     *  - [ ] surplus underlying contains 10% of total compound interest
+     *  - [ ] user's balance of dTokens / underlying is 0
+     *  - [ ] quoted supply rate at `t0` is correct
+     *  - [ ] cToken `AccrueInterest` + `Mint` + `Redeem` events, dToken `Accrue` + `Mint` + `Redeem` + `Transfer` events, and underlying `Transfer` events are all present & correct
+     */
+    async function testScenario0() {
+        const initialSnapshot = await tester.takeSnapshot();
+        const { result: initialSnapshotId } = initialSnapshot;
+
+        await tester.revertToSnapShot(initialSnapshotId);
+    }
 
     // Test snapshot and advance (time/block) functions
     await testSnapshot(web3, tester);
-    await testAdvanceTimeAndBlock(web3, tester);
+    await testAdvanceTimeAndBlockInDays(web3, tester);
+    return;
 
     // Take initial snapshot to run function tests, and revert before starting scenarios.
     const initialSnapshot = await tester.takeSnapshot();
@@ -3243,6 +3258,8 @@ async function runAllTests(web3, context, contractName, contract) {
     await tester.revertToSnapShot(initialSnapshotId);
 
     // Start testing scenarios
+    await getUnderlyingTokens();
+    await testScenario0();
 
 
     console.log(
@@ -3311,12 +3328,14 @@ async function testSnapshot(web3, tester) {
     assert.strictEqual(beforeSnapshotBlockNumber, blockNumber);
 }
 
-async function testAdvanceTimeAndBlock(web3, tester) {
-    const BLOCKS = 10;
+async function testAdvanceTimeAndBlockInDays(web3, tester) {
+    const DAYS = 1;
     const SECONDS_PER_BLOCK = 15;
-    const MILISECONDS_IN_ONE_DAY = 24 * 60 * 60 * 1000;
-    const MILISECONDS_IN_ONE_HOUR = 60 * 60 * 1000;
-    const MILISECONDS_IN_ONE_MINUTE = 60 * 1000;
+    const SECONDS_IN_A_DAY = 24 * 60 * 60;
+    const BLOCKS_PER_DAY = SECONDS_IN_A_DAY / SECONDS_PER_BLOCK;
+
+    const blocksToAdvance = DAYS * BLOCKS_PER_DAY;
+    const timeToAdvance = SECONDS_IN_A_DAY * DAYS * 1000;
 
     const blockBeforeSnapshot = await web3.eth.getBlock('latest');
     const { timestamp: timeBeforeSnapshot, number: blockNumberBeforeSnapshot } = blockBeforeSnapshot;
@@ -3324,27 +3343,26 @@ async function testAdvanceTimeAndBlock(web3, tester) {
     const snapshot = await tester.takeSnapshot();
     const { result: snapshotId } = snapshot;
 
-    await advanceByBlocks(BLOCKS, tester);
+    await advance(blocksToAdvance, timeToAdvance, tester);
 
     const newBlock = await web3.eth.getBlock('latest');
     const { timestamp: currentTime, number: currentBlockNumber } = newBlock;
 
-    const differenceInMinutes = Math.round(
-        ((currentTime - timeBeforeSnapshot % MILISECONDS_IN_ONE_DAY) % MILISECONDS_IN_ONE_HOUR) / MILISECONDS_IN_ONE_MINUTE
-    );
+    assert.strictEqual(blockNumberBeforeSnapshot + blocksToAdvance, currentBlockNumber);
 
-    assert.strictEqual(differenceInMinutes, (Math.round((BLOCKS * SECONDS_PER_BLOCK) / 60)));
-    assert.strictEqual(blockNumberBeforeSnapshot + BLOCKS, currentBlockNumber);
+    const timeDifference = currentTime - timeBeforeSnapshot;
+    const differenceInDays = Math.ceil(timeDifference / (1000 * 3600 * 24));
+
+    assert.strictEqual(differenceInDays, DAYS);
 
     await tester.revertToSnapShot(snapshotId);
 }
 
-async function advanceByBlocks(blocks, tester) {
-    const SECONDS_PER_BLOCK = 15;
-
+async function advance(blocks, timeToAdvance, tester) {
     for (let i = 0; i < blocks; i++){
-        await tester.advanceTimeAndBlock(SECONDS_PER_BLOCK * 1000);
+        await tester.advanceBlock();
     }
+    await tester.advanceTime(timeToAdvance);
 }
 
 
