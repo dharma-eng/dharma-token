@@ -3396,11 +3396,18 @@ async function runAllTests(web3, context, contractName, contract) {
             }
         );
 
+        let halfOfUnderlying = underlyingBalance.div(web3.utils.toBN('2'));
 
-        // Compare balances
-        const ratio = ((tester.ONE).sub(underlyingBalanceFromDToken.div(underlyingBalanceFromCToken)));
+        // Get interest rates and compare
+        const interestRateFromCToken = underlyingBalanceFromCToken.sub(halfOfUnderlying);
+        const interestRateFromDToken = underlyingBalanceFromDToken.sub(halfOfUnderlying);
 
-        console.log(`ratio: ${ratio}`);
+        console.log(`interestRateFromCToken ${interestRateFromCToken}`);
+        console.log(`interestRateFromDToken ${interestRateFromDToken}`);
+
+        const interestRatio = ((tester.ONE).sub(interestRateFromDToken.div(interestRateFromCToken)));
+
+        console.log(`interestRatio: ${interestRatio}`);
 
         await tester.revertToSnapShot(snapshotId);
     }
