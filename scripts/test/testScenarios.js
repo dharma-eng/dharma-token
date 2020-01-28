@@ -4,6 +4,11 @@ const constants = require('./constants.js');
 
 let contractNames = constants.CONTRACT_NAMES;
 
+const SECONDS_PER_BLOCK = 15;
+const SECONDS_IN_A_DAY = 24 * 60 * 60;
+const MILISECONDS_IN_A_DAY = SECONDS_IN_A_DAY * 1000;
+const BLOCKS_PER_DAY = SECONDS_IN_A_DAY / SECONDS_PER_BLOCK;
+
 const tokenSymbols = {
     "Dharma Dai": "dDai",
     "Dharma USDC": "dUSDC"
@@ -3220,7 +3225,6 @@ async function runAllTests(web3, context, contractName, contract) {
     // Test snapshot and advance (time/block) functions
     await testSnapshot(web3, tester);
     await testAdvanceTimeAndBlockInDays(web3, tester);
-    return;
 
     // Take initial snapshot to run function tests, and revert before starting scenarios.
     const initialSnapshot = await tester.takeSnapshot();
@@ -3329,14 +3333,7 @@ async function testSnapshot(web3, tester) {
 }
 
 async function testAdvanceTimeAndBlockInDays(web3, tester) {
-    const DAYS = 1;
-    const SECONDS_PER_BLOCK = 15;
-    const SECONDS_IN_A_DAY = 24 * 60 * 60;
-    const MILISECONDS_IN_A_DAY = SECONDS_IN_A_DAY * 1000;
-    const BLOCKS_PER_DAY = SECONDS_IN_A_DAY / SECONDS_PER_BLOCK;
-
-    const blocksToAdvance = DAYS * BLOCKS_PER_DAY;
-    const timeToAdvance = MILISECONDS_IN_A_DAY * DAYS;
+    const days = 1;
 
     const blockBeforeSnapshot = await web3.eth.getBlock('latest');
     const { timestamp: timeBeforeSnapshot, number: blockNumberBeforeSnapshot } = blockBeforeSnapshot;
@@ -3344,26 +3341,35 @@ async function testAdvanceTimeAndBlockInDays(web3, tester) {
     const snapshot = await tester.takeSnapshot();
     const { result: snapshotId } = snapshot;
 
-    await advance(blocksToAdvance, timeToAdvance, tester);
+    await advanceByDays(days, tester);
 
     const newBlock = await web3.eth.getBlock('latest');
     const { timestamp: currentTime, number: currentBlockNumber } = newBlock;
 
+    const blocksToAdvance = days * BLOCKS_PER_DAY;
     assert.strictEqual(blockNumberBeforeSnapshot + blocksToAdvance, currentBlockNumber);
 
     const timeDifference = currentTime - timeBeforeSnapshot;
     const differenceInDays = Math.ceil(timeDifference / MILISECONDS_IN_A_DAY);
 
-    assert.strictEqual(differenceInDays, DAYS);
+    assert.strictEqual(differenceInDays, days);
 
     await tester.revertToSnapShot(snapshotId);
 }
 
-async function advance(blocks, timeToAdvance, tester) {
-    for (let i = 0; i < blocks; i++){
+async function advanceByDays(days, tester) {
+    const blocksToAdvance = days * BLOCKS_PER_DAY;
+    const timeToAdvance = MILISECONDS_IN_A_DAY * days;
+
+    for (let i = 0; i < blocksToAdvance; i++){
         await tester.advanceBlock();
     }
     await tester.advanceTime(timeToAdvance);
+}
+
+async function advanceByBlocks(blocks, tester) {
+    const days = blocks / BLOCKS_PER_DAY;
+    await advanceByDays(days, tester);
 }
 
 
