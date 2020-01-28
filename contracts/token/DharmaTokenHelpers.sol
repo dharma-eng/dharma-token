@@ -16,6 +16,7 @@ contract DharmaTokenHelpers is DharmaTokenOverrides {
 
   uint8 internal constant _DECIMALS = 8; // matches cToken decimals
   uint256 internal constant _SCALING_FACTOR = 1e18;
+  uint256 internal constant _SCALING_FACTOR_MINUS_ONE = 999999999999999999;
   uint256 internal constant _HALF_OF_SCALING_FACTOR = 5e17;
   uint256 internal constant _COMPOUND_SUCCESS = 0;
   uint256 internal constant _MAX_UINT_112 = 5192296858534827628530496329220095;
@@ -180,7 +181,9 @@ contract DharmaTokenHelpers is DharmaTokenOverrides {
     uint256 underlying, uint256 exchangeRate, bool roundUp
   ) internal pure returns (uint256 amount) {
     if (roundUp) {
-      amount = ((underlying.mul(_SCALING_FACTOR)).div(exchangeRate)).add(1);
+      amount = (
+        (underlying.mul(_SCALING_FACTOR)).add(exchangeRate.sub(1))
+      ).div(exchangeRate);
     } else {
       amount = (underlying.mul(_SCALING_FACTOR)).div(exchangeRate);
     }
@@ -199,7 +202,9 @@ contract DharmaTokenHelpers is DharmaTokenOverrides {
     uint256 amount, uint256 exchangeRate, bool roundUp
   ) internal pure returns (uint256 underlying) {
     if (roundUp) {
-      underlying = (amount.mul(exchangeRate) / _SCALING_FACTOR).add(1);
+      underlying = (
+        (amount.mul(exchangeRate).add(_SCALING_FACTOR_MINUS_ONE)
+      ) / _SCALING_FACTOR);
     } else {
       underlying = amount.mul(exchangeRate) / _SCALING_FACTOR;
     }
