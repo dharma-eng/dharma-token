@@ -122,9 +122,6 @@ async function runAllTests(web3, context, contractName, contract) {
     const tester = new Tester(web3, context);
     await tester.init();
 
-    // Test takeSnapshot and revertToSnapshot
-    await testSnapshot(web3, tester);
-
     const DTokenImplementation = await getOrDeployDTokenContract(contract, tester, contractName);
 
     const { options: { address: dTokenImplementationAddress  } } = DTokenImplementation;
@@ -302,26 +299,6 @@ async function runAllTests(web3, context, contractName, contract) {
                 assert.strictEqual(value, Underlying.options.address)
             }
         );
-    }
-
-    async function testInitialExchangeRates() {
-        const initialExchangeRates = getExchangeRates(web3);
-
-        let dTokenExchangeRate = initialExchangeRates[contractName];
-        // coverage mines a few blocks prior to reaching this point - skip this test
-        if (context !== 'coverage') {
-            await tester.runTest(
-                `${contractName} exchange rate starts at ${dTokenExchangeRate.notation}`,
-                DToken,
-                'exchangeRateCurrent',
-                'call',
-                [],
-                true,
-                value => {
-                    assert.strictEqual(value, dTokenExchangeRate.rate.toString())
-                }
-            )
-        }
     }
 
     async function testAccrueInterest() {
@@ -3420,7 +3397,6 @@ async function runAllTests(web3, context, contractName, contract) {
     const { result: initialSnapshotId } = initialSnapshot;
     
     await testPureFunctions();
-    await testInitialExchangeRates();
     await testAccrueInterest();
     await testSupplyRatePerBlock();
     await testExchangeRate();
