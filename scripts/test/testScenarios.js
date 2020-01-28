@@ -3364,6 +3364,8 @@ async function runAllTests(web3, context, contractName, contract) {
 
         assert.strictEqual(currentBlockNumber, blockNumber + blocksToAdvance);
 
+        let underlyingBalanceFromCToken;
+        let underlyingBalanceFromDToken;
         // Phase 2
         await tester.runTest(
             `${contractName} Scenario 0, Phase 2`,
@@ -3373,14 +3375,32 @@ async function runAllTests(web3, context, contractName, contract) {
             [
                 CToken.options.address,
                 DToken.options.address,
-                Underlying.options.address
+                Underlying.options.address,
             ],
             true,
             receipt => {
                 const events = tester.getEvents(receipt, contractNames);
                 console.log(JSON.stringify(events, null, 2));
+
+                const underlyingTransferFromCTokenEvent = events[10];
+                const underlyingTransferFromDTokenEvent = events[25];
+
+                const { returnValues: underlyingTransferFromCToken } = underlyingTransferFromCTokenEvent;
+                const { returnValues: underlyingTransferFromDToken } = underlyingTransferFromDTokenEvent;
+
+                underlyingBalanceFromCToken = web3.utils.toBN(underlyingTransferFromCToken.value);
+                underlyingBalanceFromDToken = web3.utils.toBN(underlyingTransferFromDToken.value);
+
+                console.log(`underlyingBalancefromCToken: ${underlyingBalanceFromCToken.toString()}`)
+                console.log(`underlyingBalancefromDToken: ${underlyingBalanceFromDToken.toString()}`)
             }
         );
+
+
+        // Compare balances
+        const ratio = ((tester.ONE).sub(underlyingBalanceFromDToken.div(underlyingBalanceFromCToken)));
+
+        console.log(`ratio: ${ratio}`);
 
         await tester.revertToSnapShot(snapshotId);
     }
