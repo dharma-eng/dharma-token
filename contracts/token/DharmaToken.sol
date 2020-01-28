@@ -1,6 +1,5 @@
 pragma solidity 0.5.11;
 
-import "@openzeppelin/contracts/math/SafeMath.sol";
 import "./DharmaTokenHelpers.sol";
 import "../../interfaces/CTokenInterface.sol";
 import "../../interfaces/DTokenInterface.sol";
@@ -17,8 +16,7 @@ import "../../interfaces/ERC20Interface.sol";
  * rate.
  */
 contract DharmaToken is ERC20Interface, DTokenInterface, DharmaTokenHelpers {
-  using SafeMath for uint256;
-
+  // Set the version of the Dharma Token as a constant.
   uint256 private constant _DTOKEN_VERSION = 0;
 
   // Set block number and dToken + cToken exchange rate in slot zero on accrual.
@@ -61,12 +59,17 @@ contract DharmaToken is ERC20Interface, DTokenInterface, DharmaTokenHelpers {
     _checkCompoundInteraction(cToken.mint.selector, ok, data);
 
     // Accrue after the Compound mint to avoid duplicating accrual calculations.
-    (uint256 dTokenExchangeRate, ) = _accrue(false);
+    (uint256 dTokenExchangeRate, uint256 cTokenExchangeRate) = _accrue(false);
 
-    // Determine the dTokens to mint for the underlying using the exchange rate.
-    dTokensMinted = (
-      underlyingToSupply.mul(_SCALING_FACTOR)
-    ).div(dTokenExchangeRate);
+    // Get underlying equivalent of minted cTokens to prevent "dust" griefing.
+    (, uint256 underlyingEquivalent) = _fromUnderlyingAndBack(
+      underlyingToSupply, cTokenExchangeRate, false, false
+    );
+
+    // Determine dTokens to mint using underlying equivalent and exchange rate.
+    dTokensMinted = _fromUnderlying(
+      underlyingEquivalent, dTokenExchangeRate, false
+    );
 
     // Mint dTokens to the caller.
     _mint(msg.sender, underlyingToSupply, dTokensMinted);
@@ -97,14 +100,14 @@ contract DharmaToken is ERC20Interface, DTokenInterface, DharmaTokenHelpers {
     (uint256 dTokenExchangeRate, uint256 cTokenExchangeRate) = _accrue(true);
 
     // Determine the underlying equivalent of the supplied cToken amount.
-    uint256 underlyingEquivalent = cTokensToSupply.mul(
-      cTokenExchangeRate
-    ) / _SCALING_FACTOR;
+    uint256 underlyingEquivalent = _toUnderlying(
+      cTokensToSupply, cTokenExchangeRate, false
+    );
 
     // Determine dTokens to mint using underlying equivalent and exchange rate.
-    dTokensMinted = (
-      underlyingEquivalent.mul(_SCALING_FACTOR)
-    ).div(dTokenExchangeRate);
+    dTokensMinted = _fromUnderlying(
+      underlyingEquivalent, dTokenExchangeRate, false
+    );
 
     // Mint dTokens to the caller.
     _mint(msg.sender, underlyingEquivalent, dTokensMinted);
@@ -126,22 +129,28 @@ contract DharmaToken is ERC20Interface, DTokenInterface, DharmaTokenHelpers {
     ERC20Interface underlying = ERC20Interface(_getUnderlying());
     CTokenInterface cToken = CTokenInterface(_getCToken());
 
-    // Accrue interest and retrieve the current dToken exchange rate.
-    (uint256 dTokenExchangeRate, ) = _accrue(true);
+    // Accrue interest and retrieve current dToken and cToken exchange rates.
+    (uint256 dTokenExchangeRate, uint256 cTokenExchangeRate) = _accrue(true);
 
-    // Determine the underlying token value of the dTokens to be burned.
-    underlyingReceived = dTokensToBurn.mul(
-      dTokenExchangeRate
-    ) / _SCALING_FACTOR;
+    // Determine the equivalent underlying value of the dTokens to be burned.
+    uint256 underlyingEquivalent = _toUnderlying(
+      dTokensToBurn, dTokenExchangeRate, false
+    );
+
+    // Get minted cTokens and underlying equivalent to prevent "dust" griefing.
+    uint256 cTokenEquivalent;
+    (cTokenEquivalent, underlyingReceived) = _fromUnderlyingAndBack(
+      underlyingEquivalent, cTokenExchangeRate, false, false
+    );
 
     // Burn the dTokens.
     _burn(msg.sender, underlyingReceived, dTokensToBurn);
 
     // Use cTokens to redeem underlying and ensure that the operation succeeds.
     (bool ok, bytes memory data) = address(cToken).call(abi.encodeWithSelector(
-      cToken.redeemUnderlying.selector, underlyingReceived
+      cToken.redeem.selector, cTokenEquivalent
     ));
-    _checkCompoundInteraction(cToken.redeemUnderlying.selector, ok, data);
+    _checkCompoundInteraction(cToken.redeem.selector, ok, data);
 
     // Send the redeemed underlying tokens to the caller.
     require(
@@ -167,14 +176,12 @@ contract DharmaToken is ERC20Interface, DTokenInterface, DharmaTokenHelpers {
     (uint256 dTokenExchangeRate, uint256 cTokenExchangeRate) = _accrue(true);
 
     // Determine the underlying token value of the dTokens to be burned.
-    uint256 underlyingEquivalent = dTokensToBurn.mul(
-      dTokenExchangeRate
-    ) / _SCALING_FACTOR;
+    uint256 underlyingEquivalent = _toUnderlying(
+      dTokensToBurn, dTokenExchangeRate, false
+    );
 
     // Determine amount of cTokens corresponding to underlying equivalent value.
-    cTokensReceived = (
-      underlyingEquivalent.mul(_SCALING_FACTOR)
-    ).div(cTokenExchangeRate);
+    cTokensReceived = _fromUnderlying(underlyingEquivalent, cTokenExchangeRate, false);
 
     // Burn the dTokens.
     _burn(msg.sender, underlyingEquivalent, dTokensToBurn);
@@ -210,12 +217,17 @@ contract DharmaToken is ERC20Interface, DTokenInterface, DharmaTokenHelpers {
     _checkCompoundInteraction(cToken.redeemUnderlying.selector, ok, data);
 
     // Accrue after the Compound redeem to avoid duplicating calculations.
-    (uint256 dTokenExchangeRate, ) = _accrue(false);
+    (uint256 dTokenExchangeRate, uint256 cTokenExchangeRate) = _accrue(false);
 
-    // Determine the dTokens to redeem using the exchange rate.
-    dTokensBurned = (
-      (underlyingToReceive.mul(_SCALING_FACTOR)).div(dTokenExchangeRate)
-    ).add(1);
+    // Get underlying equivalent of redeemed cTokens to prevent "dust" griefing.
+    (, uint256 underlyingEquivalent) = _fromUnderlyingAndBack(
+      underlyingToReceive, cTokenExchangeRate, true, true // rounding up both
+    );
+
+    // Determine the dTokens to redeem using the exchange rate, rounding up.
+    dTokensBurned = _fromUnderlying(
+      underlyingEquivalent, dTokenExchangeRate, true
+    );
 
     // Burn the dTokens.
     _burn(msg.sender, underlyingToReceive, dTokensBurned);
@@ -244,18 +256,18 @@ contract DharmaToken is ERC20Interface, DTokenInterface, DharmaTokenHelpers {
     // Accrue interest and retrieve current cToken and dToken exchange rates.
     (uint256 dTokenExchangeRate, uint256 cTokenExchangeRate) = _accrue(true);
 
-    // Determine the dTokens to redeem using the exchange rate.
-    dTokensBurned = (
-      (underlyingToReceive.mul(_SCALING_FACTOR)).div(dTokenExchangeRate)
-    ).add(1);
+    // Get received cTokens and underlying equivalent (prevent "dust" griefing).
+    (uint256 cTokensToReceive, uint256 underlyingEquivalent) = _fromUnderlyingAndBack(
+      underlyingToReceive, cTokenExchangeRate, false, true // round down cTokens
+    );
+
+    // Determine redeemed dTokens using equivalent underlying value, rounded up.
+    dTokensBurned = _fromUnderlying(
+      underlyingEquivalent, dTokenExchangeRate, true
+    );
 
     // Burn the dTokens.
     _burn(msg.sender, underlyingToReceive, dTokensBurned);
-
-    // Determine amount of cTokens corresponding to the underlying dToken value.
-    uint256 cTokensToReceive = (
-      underlyingToReceive.mul(_SCALING_FACTOR)
-    ).div(cTokenExchangeRate);
 
     // Transfer cTokens to the caller and ensure that the operation succeeds.
     (bool ok, bytes memory data) = address(cToken).call(abi.encodeWithSelector(
@@ -335,10 +347,8 @@ contract DharmaToken is ERC20Interface, DTokenInterface, DharmaTokenHelpers {
     // Accrue interest and retrieve the current dToken exchange rate.
     (uint256 dTokenExchangeRate, ) = _accrue(true);
 
-    // Determine the dToken amount to transfer using the exchange rate.
-    uint256 dTokenAmount = (
-      underlyingEquivalentAmount.mul(_SCALING_FACTOR)
-    ).div(dTokenExchangeRate);
+    // Determine dToken amount to transfer using the exchange rate, rounded up.
+    uint256 dTokenAmount = _fromUnderlying(underlyingEquivalentAmount, dTokenExchangeRate, true);
 
     // Transfer the dTokens.
     _transfer(msg.sender, recipient, dTokenAmount);
@@ -394,10 +404,8 @@ contract DharmaToken is ERC20Interface, DTokenInterface, DharmaTokenHelpers {
     // Accrue interest and retrieve the current dToken exchange rate.
     (uint256 dTokenExchangeRate, ) = _accrue(true);
 
-    // Determine the dTokens to transfer using the exchange rate.
-    uint256 dTokenAmount = (
-      underlyingEquivalentAmount.mul(_SCALING_FACTOR)
-    ).div(dTokenExchangeRate);
+    // Determine dToken amount to transfer using the exchange rate, rounded up.
+    uint256 dTokenAmount = _fromUnderlying(underlyingEquivalentAmount, dTokenExchangeRate, true);
 
     // Transfer the dTokens and adjust allowance accordingly.
     _transfer(sender, recipient, dTokenAmount);
@@ -457,8 +465,8 @@ contract DharmaToken is ERC20Interface, DTokenInterface, DharmaTokenHelpers {
     (uint256 dTokenExchangeRate, ,) = _getExchangeRates(true);
 
     // Determine total value of all issued dTokens, denominated as underlying.
-    dTokenTotalSupplyInUnderlying = (
-      _totalSupply.mul(dTokenExchangeRate) / _SCALING_FACTOR
+    dTokenTotalSupplyInUnderlying = _toUnderlying(
+      _totalSupply, dTokenExchangeRate, false
     );
   }
 
@@ -484,9 +492,7 @@ contract DharmaToken is ERC20Interface, DTokenInterface, DharmaTokenHelpers {
     (uint256 dTokenExchangeRate, ,) = _getExchangeRates(true);
 
     // Convert account balance to underlying equivalent using the exchange rate.
-    underlyingBalance = _balances[account].mul(
-      dTokenExchangeRate
-    ) / _SCALING_FACTOR;
+    underlyingBalance = _toUnderlying(_balances[account], dTokenExchangeRate, false);
   }
 
   /**
@@ -654,6 +660,9 @@ contract DharmaToken is ERC20Interface, DTokenInterface, DharmaTokenHelpers {
    * @param amount uint256 The amount of tokens to mint.
    */
   function _mint(address account, uint256 exchanged, uint256 amount) private {
+    require(
+      exchanged > 0 && amount > 0, "Mint failed: insufficient funds supplied."
+    );
     _totalSupply = _totalSupply.add(amount);
     _balances[account] = _balances[account].add(amount);
 
@@ -669,6 +678,10 @@ contract DharmaToken is ERC20Interface, DTokenInterface, DharmaTokenHelpers {
    * @param amount uint256 The amount of tokens to burn.
    */
   function _burn(address account, uint256 exchanged, uint256 amount) private {
+    require(
+      exchanged > 0 && amount > 0, "Redeem failed: insufficient funds supplied."
+    );
+
     uint256 balancePriorToBurn = _balances[account];
     require(
       balancePriorToBurn >= amount, "Supplied amount exceeds account balance."
@@ -705,7 +718,6 @@ contract DharmaToken is ERC20Interface, DTokenInterface, DharmaTokenHelpers {
    * @param value uint256 The size of the allowance to grant.
    */
   function _approve(address owner, address spender, uint256 value) private {
-    require(owner != address(0), "ERC20: approve from the zero address");
     require(spender != address(0), "ERC20: approve to the zero address");
 
     _allowances[owner][spender] = value;
@@ -775,13 +787,11 @@ contract DharmaToken is ERC20Interface, DTokenInterface, DharmaTokenHelpers {
     (uint256 dTokenExchangeRate, uint256 cTokenExchangeRate,) = _getExchangeRates(true);
 
     // Determine value of all issued dTokens in the underlying, rounded up.
-    uint256 dTokenUnderlying = (
-      _totalSupply.mul(dTokenExchangeRate) / _SCALING_FACTOR
-    ).add(1);
+    uint256 dTokenUnderlying = _toUnderlying(_totalSupply, dTokenExchangeRate, true);
 
     // Determine value of all retained cTokens in the underlying, rounded down.
-    uint256 cTokenUnderlying = (
-      cToken.balanceOf(address(this)).mul(cTokenExchangeRate) / _SCALING_FACTOR
+    uint256 cTokenUnderlying = _toUnderlying(
+      cToken.balanceOf(address(this)), cTokenExchangeRate, false
     );
 
     // Determine the size of the surplus in terms of underlying amount.
@@ -792,7 +802,7 @@ contract DharmaToken is ERC20Interface, DTokenInterface, DharmaTokenHelpers {
     // Determine the cToken equivalent of this surplus amount.
     cTokenSurplus = underlyingSurplus == 0
       ? 0
-      : (underlyingSurplus.mul(_SCALING_FACTOR)).div(cTokenExchangeRate);
+      : _fromUnderlying(underlyingSurplus, cTokenExchangeRate, false);
   }
 
   /**

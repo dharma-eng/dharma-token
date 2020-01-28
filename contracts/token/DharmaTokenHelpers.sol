@@ -1,5 +1,6 @@
 pragma solidity 0.5.11;
 
+import "@openzeppelin/contracts/math/SafeMath.sol";
 import "../../interfaces/CTokenInterface.sol";
 import "./DharmaTokenOverrides.sol";
 
@@ -11,6 +12,8 @@ import "./DharmaTokenOverrides.sol";
  * Tokens.
  */
 contract DharmaTokenHelpers is DharmaTokenOverrides {
+  using SafeMath for uint256;
+
   uint8 internal constant _DECIMALS = 8; // matches cToken decimals
   uint256 internal constant _SCALING_FACTOR = 1e18;
   uint256 internal constant _HALF_OF_SCALING_FACTOR = 5e17;
@@ -94,6 +97,8 @@ contract DharmaTokenHelpers is DharmaTokenOverrides {
     CTokenInterface cToken;
     if (functionSelector == cToken.mint.selector) {
       functionName = "mint";
+    } else if (functionSelector == cToken.redeem.selector) {
+      functionName = "redeem";
     } else if (functionSelector == cToken.redeemUnderlying.selector) {
       functionName = "redeemUnderlying";
     } else if (functionSelector == cToken.transferFrom.selector) {
@@ -160,5 +165,65 @@ contract DharmaTokenHelpers is DharmaTokenOverrides {
   function _safeUint112(uint256 input) internal pure returns (uint112 output) {
     require(input <= _MAX_UINT_112, "Overflow on conversion to uint112.");
     output = uint112(input);
+  }
+
+  /**
+   * @notice Internal pure function to convert an underlying amount to a dToken
+   * or cToken amount using an exchange rate and fixed-point arithmetic.
+   * @param underlying uint256 The underlying amount to convert.
+   * @param exchangeRate uint256 The exchange rate (multiplied by 10^18).
+   * @param roundUp bool Whether the final amount should be rounded up - it will
+   * instead be truncated (rounded down) if this value is false.
+   * @return The cToken or dToken amount.
+   */
+  function _fromUnderlying(
+    uint256 underlying, uint256 exchangeRate, bool roundUp
+  ) internal pure returns (uint256 amount) {
+    if (roundUp) {
+      amount = ((underlying.mul(_SCALING_FACTOR)).div(exchangeRate)).add(1);
+    } else {
+      amount = (underlying.mul(_SCALING_FACTOR)).div(exchangeRate);
+    }
+  }
+
+  /**
+   * @notice Internal pure function to convert a dToken or cToken amount to the
+   * underlying amount using an exchange rate and fixed-point arithmetic.
+   * @param amount uint256 The cToken or dToken amount to convert.
+   * @param exchangeRate uint256 The exchange rate (multiplied by 10^18).
+   * @param roundUp bool Whether the final amount should be rounded up - it will
+   * instead be truncated (rounded down) if this value is false.
+   * @return The underlying amount.
+   */
+  function _toUnderlying(
+    uint256 amount, uint256 exchangeRate, bool roundUp
+  ) internal pure returns (uint256 underlying) {
+    if (roundUp) {
+      underlying = (amount.mul(exchangeRate) / _SCALING_FACTOR).add(1);
+    } else {
+      underlying = amount.mul(exchangeRate) / _SCALING_FACTOR;
+    }
+  }
+
+  /**
+   * @notice Internal pure function to convert an underlying amount to a dToken
+   * or cToken amount and back to the underlying, so as to properly capture
+   * rounding errors, by using an exchange rate and fixed-point arithmetic.
+   * @param underlying uint256 The underlying amount to convert.
+   * @param exchangeRate uint256 The exchange rate (multiplied by 10^18).
+   * @param roundUpOne bool Whether the intermediate dToken or cToken amount
+   * should be rounded up - it will instead be truncated (rounded down) if this
+   * value is false.
+   * @param roundUpTwo bool Whether the final underlying amount should be
+   * rounded up - it will instead be truncated (rounded down) if this value is
+   * false.
+   * @return The intermediate cToken or dToken amount and the final underlying
+   * amount.
+   */
+  function _fromUnderlyingAndBack(
+    uint256 underlying, uint256 exchangeRate, bool roundUpOne, bool roundUpTwo
+  ) internal pure returns (uint256 amount, uint256 adjustedUnderlying) {
+    amount = _fromUnderlying(underlying, exchangeRate, roundUpOne);
+    adjustedUnderlying = _toUnderlying(amount, exchangeRate, roundUpTwo);
   }
 }
