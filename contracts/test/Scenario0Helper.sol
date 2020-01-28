@@ -142,7 +142,7 @@ contract Scenario0Helper {
   	// redeem dTokens for underlying.
   	underlyingReturnedFromDTokens = dToken.redeem(dTokensMinted);
   	require(
-  	  underlyingReturnedFromDTokens == dTokenBalance.balanceOf(address(this)),
+  	  underlyingReturnedFromDTokens == underlying.balanceOf(address(this)),
   	  "underlying redeemed from dTokens do not match returned value."
   	);
 
