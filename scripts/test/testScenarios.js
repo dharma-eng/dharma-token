@@ -3237,7 +3237,104 @@ async function runAllTests(web3, context, contractName, contract) {
             [constants.NULL_ADDRESS, '0'],
             false,
         );
+    }
 
+    async function testEdgeCases() {
+        await tester.runTest(
+            `${contractName} cannot call redeemUnderlying and supply a huge amount`,
+            DToken,
+            'redeemUnderlying',
+            'send',
+            [constants.FULL_APPROVAL],
+            false
+        );
+
+        await tester.runTest(
+            `${contractName} call to transfer with huge amount fails`,
+            DToken,
+            'transfer',
+            'send',
+            [tester.address, constants.FULL_APPROVAL],
+            false
+        );
+
+        if (contractName === 'Dharma Dai') {
+            await tester.runTest(
+                `${contractName} cannot call mint and supply a tiny amount`,
+                DToken,
+                'mint',
+                'send',
+                ['1'],
+                false
+            );
+
+            await tester.runTest(
+                `${contractName} cannot call mintViaCToken and supply a tiny amount`,
+                DToken,
+                'mintViaCToken',
+                'send',
+                ['1'],
+                false
+            );
+
+            await tester.runTest(
+                `${contractName} cannot call redeemUnderlying and supply a tiny amount`,
+                DToken,
+                'redeemUnderlying',
+                'send',
+                ['1'],
+                false
+            );
+
+            await tester.runTest(
+                `${contractName} cannot call redeemUnderlyingToCToken and supply a tiny amount`,
+                DToken,
+                'redeemUnderlyingToCToken',
+                'send',
+                ['1'],
+                false
+            );
+
+            await tester.runTest(
+                `${contractName} call to transferUnderlying with tiny amount rounds up to 1 dToken`,
+                DToken,
+                'transfer',
+                'send',
+                [tester.address, '1'],
+                true,
+                receipt => {
+                    const events = tester.getEvents(receipt, contractNames);
+                    assert.strictEqual(events.length, 1);
+                    assert.strictEqual(
+                        events[0].returnValues.from, tester.address
+                    );
+                    assert.strictEqual(
+                        events[0].returnValues.to, tester.address
+                    );
+                    assert.strictEqual(
+                        events[0].returnValues.value, '1'
+                    );
+                }
+            );
+        } else {
+            await tester.runTest(
+                `${contractName} cannot call redeem and supply a tiny amount`,
+                DToken,
+                'redeem',
+                'send',
+                ['1'],
+                false
+            );
+
+            await tester.runTest(
+                `${contractName} cannot call redeemToCToken and supply a tiny amount`,
+                DToken,
+                'redeemToCToken',
+                'send',
+                ['1'],
+                false
+            );          
+        }
     }
 
     async function testBlockAccrual() {
@@ -3454,7 +3551,7 @@ async function runAllTests(web3, context, contractName, contract) {
     // // Take initial snapshot to run function tests, and revert before starting scenarios.
     const initialSnapshot = await tester.takeSnapshot();
     const { result: initialSnapshotId } = initialSnapshot;
-    //
+
     await testPureFunctions();
     await testAccrueInterest();
     await testSupplyRatePerBlock();
@@ -3482,6 +3579,7 @@ async function runAllTests(web3, context, contractName, contract) {
     await testSpreadPerBlock();
     await testRequireNonNull();
     await testBlockAccrual();
+    await testEdgeCases();
 
     await tester.revertToSnapShot(initialSnapshotId);
 

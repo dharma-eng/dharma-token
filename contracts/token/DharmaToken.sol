@@ -384,11 +384,7 @@ contract DharmaToken is ERC20Interface, DTokenInterface, DharmaTokenHelpers {
   function transferFrom(
     address sender, address recipient, uint256 amount
   ) external returns (bool success) {
-    _transfer(sender, recipient, amount);
-    uint256 allowance = _allowances[sender][msg.sender];
-    if (allowance != uint256(-1)) {
-      _approve(sender, msg.sender, allowance.sub(amount));
-    }
+    _transferFrom(sender, recipient, amount);
     success = true;
   }
 
@@ -414,11 +410,7 @@ contract DharmaToken is ERC20Interface, DTokenInterface, DharmaTokenHelpers {
     );
 
     // Transfer the dTokens and adjust allowance accordingly.
-    _transfer(sender, recipient, dTokenAmount);
-    uint256 allowance = _allowances[sender][msg.sender];
-    if (allowance != uint256(-1)) {
-      _approve(sender, msg.sender, allowance.sub(dTokenAmount));
-    }
+    _transferFrom(sender, recipient, dTokenAmount);
     success = true;
   }
 
@@ -713,9 +705,32 @@ contract DharmaToken is ERC20Interface, DTokenInterface, DharmaTokenHelpers {
     require(sender != address(0), "ERC20: transfer from the zero address");
     require(recipient != address(0), "ERC20: transfer to the zero address");
 
-    _balances[sender] = _balances[sender].sub(amount);
+    uint256 senderBalance = _balances[sender];
+    require(senderBalance >= amount, "Insufficient funds.");
+    
+    _balances[sender] = senderBalance - amount; // overflow checked above.
     _balances[recipient] = _balances[recipient].add(amount);
+    
     emit Transfer(sender, recipient, amount);
+  }
+
+  /**
+   * @notice Private function to transfer `amount` tokens from `sender` to
+   * `recipient` and to deduct the transferred amount from the allowance of the
+   * caller unless the allowance is set to the maximum amount.
+   * @param sender address The account to transfer tokens from.
+   * @param recipient address The account to transfer tokens to.
+   * @param amount uint256 The amount of tokens to transfer.
+   */
+  function _transferFrom(
+    address sender, address recipient, uint256 amount
+  ) private {
+    _transfer(sender, recipient, amount);
+    uint256 callerAllowance = _allowances[sender][msg.sender];
+    if (callerAllowance != uint256(-1)) {
+      require(callerAllowance >= amount, "Insufficient allowance.");
+      _approve(sender, msg.sender, callerAllowance - amount); // overflow safe.
+    }
   }
 
   /**
