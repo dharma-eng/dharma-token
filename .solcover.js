@@ -2,6 +2,8 @@ module.exports = {
   skipFiles: [
     'Migrations.sol',
     'test/DharmaUpgradeBeaconController.sol',
+    'test/HelperTester.sol',
+    'test/NotCompound.sol',
     'test/Scenario0Helper.sol',
     'test/Uniswapper.sol',
     'test/UpgradeBeacon.sol',

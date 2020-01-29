@@ -20,6 +20,8 @@ const DharmaUSDC = artifacts.require("./token/DharmaUSDCImplementationV0.sol")
 const DharmaDaiInitializer = artifacts.require("./token/DharmaDaiInitializer.sol")
 const DharmaUSDCInitializer = artifacts.require("./token/DharmaUSDCInitializer.sol")
 
+const HelperTester = artifacts.require("./test/HelperTester.sol")
+
 contract("DharmaDaiInitializer", accounts => {
   it("should be able to initialize Dharma Dai", async () => {
     const instance = await DharmaDaiInitializer.deployed()
@@ -48,6 +50,14 @@ contract("DharmaUSDC", accounts => {
   it("should run all tests for Dharma USD Coin", async () => {
   	const instance = await DharmaUSDC.deployed()
   	await runTests(instance.contract, 'Dharma USD Coin')
+    return instance
+  })
+})
+
+contract("HelperTester", accounts => {
+  it("should run tests against the helper tester contract", async () => {
+    const instance = await HelperTester.deployed()
+    await instance.methods['test()'].sendTransaction()
     return instance
   })
 })
