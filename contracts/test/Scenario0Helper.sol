@@ -22,6 +22,8 @@ contract Scenario0Helper {
   uint256 public interestRateFromCToken;
   uint256 public interestRateFromDToken;
   uint256 public calculatedInterestRateFromDToken;
+  uint256 public calculatedSurplus;
+  uint256 public dTokenSurplus;
 
   uint256 private constant _SCALING_FACTOR = 1e18;
 
@@ -161,10 +163,10 @@ contract Scenario0Helper {
     );
 
     // interest earned on cTokens
-    interestRateFromCToken = underlyingReturnedFromCTokens - underlyingUsedToMintEachToken;
+    interestRateFromCToken = underlyingReturnedFromCTokens.sub(underlyingUsedToMintEachToken);
 
     // interest earned on dTokens
-    interestRateFromDToken = underlyingReturnedFromDTokens - underlyingUsedToMintEachToken;
+    interestRateFromDToken = underlyingReturnedFromDTokens.sub(underlyingUsedToMintEachToken);
 
     calculatedInterestRateFromDToken = interestRateFromCToken.sub(interestRateFromCToken.div(10));
 
@@ -180,5 +182,29 @@ contract Scenario0Helper {
       ).div(calculatedInterestRateFromDToken) >= _SCALING_FACTOR.sub(1e11),
       "Interest rate received from dTokens is 99.99999% of expected."
     );
+
+    // Surplus should be 10% of interest earned
+    calculatedSurplus = interestRateFromCToken.div(10);
+
+    // get the surplus on the dToken
+    dTokenSurplus = dToken.getSurplus();
+
+    require(
+      calculatedSurplus >= dTokenSurplus,
+      "Surplus is at most 10% of."
+    );
+
+    // ensure that interest rates earned on dTokens is at least 99.99999% of expected interest rate
+//    require(
+//      (
+//      dTokenSurplus.mul(_SCALING_FACTOR)
+//      ).div(calculatedSurplus) >= _SCALING_FACTOR.sub(1e11),
+//      "Surplus is 99.99999% of expected."
+//    );
+//
+//    require(
+//      dTokenSurplus == interestRateFromDToken.div(10),
+//      "Surplus is 10% of total interest earned on dTokens."
+//    );
   }
 }
