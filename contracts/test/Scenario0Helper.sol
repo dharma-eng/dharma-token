@@ -178,7 +178,7 @@ contract Scenario0Helper {
 			(
 			interestRateFromDToken.mul(_SCALING_FACTOR)
 			).div(calculatedInterestRateFromDToken) >= _SCALING_FACTOR.sub(1e11),
-			"Interest rate received from dTokens is 99.99999% of expected"
+			"Interest rate received from dTokens is 99.99999% of expected."
 		);
 	}
 }
