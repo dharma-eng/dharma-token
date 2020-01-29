@@ -19,6 +19,9 @@ const UpgradeBeaconControllerArtifact = require('../../build/contracts/DharmaUpg
 const UpgradeBeaconArtifact = require('../../build/contracts/UpgradeBeacon.json');
 const UpgradeBeaconProxyArtifact = require('../../build/contracts/UpgradeBeaconProxy.json');
 
+// test scenario helpers
+const Scenario0HelperArtifact = require('../../build/contracts/Scenario0Helper.json');
+
 // used to wait for more confirmations
 function longer() {
   return new Promise(resolve => {setTimeout(() => {resolve()}, 500)})
@@ -43,9 +46,11 @@ class Tester {
         DharmaDaiDeployer.options.data = DharmaDaiArtifact.bytecode;
         this.DharmaDaiDeployer = DharmaDaiDeployer;
 
+
         const DharmaUSDCDeployer = new this.web3.eth.Contract(DharmaUSDCArtifact.abi);
         DharmaUSDCDeployer.options.data = DharmaUSDCArtifact.bytecode;
         this.DharmaUSDCDeployer = DharmaUSDCDeployer;
+
 
         const DharmaDaiInitializerDeployer = new this.web3.eth.Contract(
             DharmaDaiInitializerArtifact.abi
@@ -55,6 +60,7 @@ class Tester {
         );
         this.DharmaDaiInitializerDeployer = DharmaDaiInitializerDeployer;
 
+
         const DharmaUSDCInitializerDeployer = new this.web3.eth.Contract(
             DharmaUSDCInitializerArtifact.abi
         );
@@ -62,6 +68,7 @@ class Tester {
             DharmaUSDCInitializerArtifact.bytecode
         );
         this.DharmaUSDCInitializerDeployer = DharmaUSDCInitializerDeployer;
+
 
         const UpgradeBeaconControllerDeployer = new this.web3.eth.Contract(
             UpgradeBeaconControllerArtifact.abi
@@ -71,11 +78,13 @@ class Tester {
         );
         this.UpgradeBeaconControllerDeployer = UpgradeBeaconControllerDeployer;
 
+
         const UpgradeBeaconDeployer = new this.web3.eth.Contract(
             UpgradeBeaconArtifact.abi
         );
         UpgradeBeaconDeployer.options.data = UpgradeBeaconArtifact.bytecode;
         this.UpgradeBeaconDeployer = UpgradeBeaconDeployer;
+
 
         const UpgradeBeaconProxyDeployer = new this.web3.eth.Contract(
             UpgradeBeaconProxyArtifact.abi
@@ -84,6 +93,16 @@ class Tester {
             UpgradeBeaconProxyArtifact.bytecode
         );
         this.UpgradeBeaconProxyDeployer = UpgradeBeaconProxyDeployer;
+
+
+        const Scenario0HelperDeployer = new this.web3.eth.Contract(
+            Scenario0HelperArtifact.abi
+        );
+        Scenario0HelperDeployer.options.data = (
+            Scenario0HelperArtifact.bytecode
+        );
+        this.Scenario0HelperDeployer = Scenario0HelperDeployer;
+
 
         this.DAI = new this.web3.eth.Contract(
             IERC20Artifact.abi, constants.DAI_MAINNET_ADDRESS
