@@ -25,7 +25,7 @@ contract Scenario0Helper {
 
 	uint256 private constant _SCALING_FACTOR = 1e18;
 
-// First approve this contract to transfer underlying for the caller.
+	// First approve this contract to transfer underlying for the caller.
 	function phaseOne(
 		CTokenInterface cToken,
 		DTokenInterface dToken,
