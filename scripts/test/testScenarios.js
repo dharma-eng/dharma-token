@@ -3641,20 +3641,20 @@ async function runAllTests(web3, context, contractName, contract) {
     const initialSnapshot = await tester.takeSnapshot();
     const { result: initialSnapshotId } = initialSnapshot;
 
-    // await testPureFunctions();
-    // await testAccrueInterest();
-    // await testSupplyRatePerBlock();
-    // await testExchangeRate();
-    // await testAccrueInterestFromAnyAccount();
-    // await testPullSurplusBeforeMints();
+    await testPureFunctions();
+    await testAccrueInterest();
+    await testSupplyRatePerBlock();
+    await testExchangeRate();
+    await testAccrueInterestFromAnyAccount();
+    await testPullSurplusBeforeMints();
     await getUnderlyingTokens();
-    // await testCannotMintBeforeApproval();
+    await testCannotMintBeforeApproval();
 
 
     // Start testing scenarios
     // Note: scenarios require getUnderlyingTokens()
-    await testScenario2();
     await testScenario0();
+    await testScenario2();
     await testScenario7();
 
     await testMint();
@@ -3677,6 +3677,7 @@ async function runAllTests(web3, context, contractName, contract) {
     await testRequireNonNull();
     await testBlockAccrual();
     await testEdgeCases();
+
     await tester.revertToSnapShot(initialSnapshotId);
 
 
