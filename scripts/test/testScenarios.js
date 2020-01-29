@@ -3496,50 +3496,6 @@ async function runAllTests(web3, context, contractName, contract) {
             }
         );
 
-        // let halfOfUnderlying = underlyingBalance.div(web3.utils.toBN('2'));
-        //
-        // // Get interest rates and compare
-        // const interestRateFromCToken = underlyingBalanceFromCToken.sub(halfOfUnderlying);
-        // const interestRateFromDToken = underlyingBalanceFromDToken.sub(halfOfUnderlying);
-        //
-        // const calculatedInterestRateFromDToken = interestRateFromCToken.sub(interestRateFromCToken.div(tester.TEN));
-        //
-        // console.log(`interestRateFromCToken ${interestRateFromCToken}`);
-        // console.log(`interestRateFromDToken ${interestRateFromDToken}`);
-        // console.log(`calculatedInterestRateFromDToken ${calculatedInterestRateFromDToken}`);
-        // console.log(`delta: ${calculatedInterestRateFromDToken.sub(interestRateFromDToken)}`);
-        // assert.strictEqual(interestRateFromDToken.toString(), calculatedInterestRateFromDToken.toString());
-
-        // Note: we should be using interestRateFromCToken since they should be the same,
-        // but it will most likely be off by a bit
-        // let expectedSurplusUnderlying = interestRateFromDToken.div(tester.TEN);
-        //
-        // await tester.runTest(
-        //     `${tokenSymbols[contractName]} get current surplus`,
-        //     DToken,
-        //     'getSurplus',
-        //     'call',
-        //     [],
-        //     true,
-        //     value => {
-        //         currentSurplus = web3.utils.toBN(value)
-        //         console.log(`currentSurplus ${currentSurplus.toString()}`);
-        //     }
-        // );
-        //
-        // await tester.runTest(
-        //     `${tokenSymbols[contractName]} get current surplus in underlying`,
-        //     DToken,
-        //     'getSurplusUnderlying',
-        //     'call',
-        //     [],
-        //     true,
-        //     value => {
-        //         console.log(`surplusUnderlying ${value}`);
-        //         assert.strictEqual(value, expectedSurplusUnderlying.toString());
-        //     }
-        // );
-
         await tester.revertToSnapShot(snapshotId);
     }
 

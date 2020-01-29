@@ -173,12 +173,12 @@ contract Scenario0Helper {
 			"Interest rate earned on dToken is at most 90%."
 		);
 
-		// ensure that interest rates earned on tokens are within
+		// ensure that interest rates earned on dTokens is at least 99.99999% of expected interest rate
 		require(
 			(
 			interestRateFromDToken.mul(_SCALING_FACTOR)
 			).div(calculatedInterestRateFromDToken) >= _SCALING_FACTOR.sub(1e11),
-			"Interest rate received from dTokens is 10% of interest received from cToken"
+			"Interest rate received from dTokens is 99.99999% of expected"
 		);
 	}
 }
