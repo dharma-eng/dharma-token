@@ -22,6 +22,8 @@ const UpgradeBeaconProxyArtifact = require('../../build/contracts/UpgradeBeaconP
 // test scenario helpers
 const Scenario0HelperArtifact = require('../../build/contracts/Scenario0Helper.json');
 
+const Scenario2HelperArtifact = require('../../build/contracts/Scenario2Helper.json');
+
 // used to wait for more confirmations
 function longer() {
   return new Promise(resolve => {setTimeout(() => {resolve()}, 500)})
@@ -103,6 +105,13 @@ class Tester {
         );
         this.Scenario0HelperDeployer = Scenario0HelperDeployer;
 
+        const Scenario2HelperDeployer = new this.web3.eth.Contract(
+            Scenario2HelperArtifact.abi
+        );
+        Scenario2HelperDeployer.options.data = (
+            Scenario2HelperArtifact.bytecode
+        );
+        this.Scenario2HelperDeployer = Scenario2HelperDeployer;
 
         this.DAI = new this.web3.eth.Contract(
             IERC20Artifact.abi, constants.DAI_MAINNET_ADDRESS
