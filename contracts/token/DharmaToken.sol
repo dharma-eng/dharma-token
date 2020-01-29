@@ -259,7 +259,9 @@ contract DharmaToken is ERC20Interface, DTokenInterface, DharmaTokenHelpers {
     (uint256 dTokenExchangeRate, uint256 cTokenExchangeRate) = _accrue(true);
 
     // Get received cTokens and underlying equivalent (prevent "dust" griefing).
-    (uint256 cTokensToReceive, uint256 underlyingEquivalent) = _fromUnderlyingAndBack(
+    (
+      uint256 cTokensToReceive, uint256 underlyingEquivalent
+    ) = _fromUnderlyingAndBack(
       underlyingToReceive, cTokenExchangeRate, false, true // round down cTokens
     );
 
@@ -701,7 +703,9 @@ contract DharmaToken is ERC20Interface, DTokenInterface, DharmaTokenHelpers {
    * @param recipient address The account to transfer tokens to.
    * @param amount uint256 The amount of tokens to transfer.
    */
-  function _transfer(address sender, address recipient, uint256 amount) private {
+  function _transfer(
+    address sender, address recipient, uint256 amount
+  ) private {
     require(sender != address(0), "ERC20: transfer from the zero address");
     require(recipient != address(0), "ERC20: transfer to the zero address");
 
