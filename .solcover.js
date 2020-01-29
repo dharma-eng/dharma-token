@@ -7,6 +7,7 @@ module.exports = {
     'test/Scenario0Helper.sol',
     'test/Scenario2Helper.sol',
     'test/Scenario7Helper.sol',
+    'test/Scenario9Helper.sol',
     'test/Uniswapper.sol',
     'test/UpgradeBeacon.sol',
     'test/UpgradeBeaconProxy.sol'
