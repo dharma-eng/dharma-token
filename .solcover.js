@@ -6,6 +6,7 @@ module.exports = {
     'test/NotCompound.sol',
     'test/Scenario0Helper.sol',
     'test/Scenario2Helper.sol',
+    'test/Scenario7Helper.sol',
     'test/Uniswapper.sol',
     'test/UpgradeBeacon.sol',
     'test/UpgradeBeaconProxy.sol'

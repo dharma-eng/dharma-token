@@ -24,6 +24,8 @@ const Scenario0HelperArtifact = require('../../build/contracts/Scenario0Helper.j
 
 const Scenario2HelperArtifact = require('../../build/contracts/Scenario2Helper.json');
 
+const Scenario7HelperArtifact = require('../../build/contracts/Scenario7Helper.json');
+
 // used to wait for more confirmations
 function longer() {
   return new Promise(resolve => {setTimeout(() => {resolve()}, 500)})
@@ -112,6 +114,14 @@ class Tester {
             Scenario2HelperArtifact.bytecode
         );
         this.Scenario2HelperDeployer = Scenario2HelperDeployer;
+
+        const Scenario7HelperDeployer = new this.web3.eth.Contract(
+            Scenario7HelperArtifact.abi
+        );
+        Scenario7HelperDeployer.options.data = (
+            Scenario7HelperArtifact.bytecode
+        );
+        this.Scenario7HelperDeployer = Scenario7HelperDeployer;
 
         this.DAI = new this.web3.eth.Contract(
             IERC20Artifact.abi, constants.DAI_MAINNET_ADDRESS

@@ -3611,6 +3611,73 @@ async function runAllTests(web3, context, contractName, contract) {
         await tester.revertToSnapShot(snapshotId);
     }
 
+    /**
+     * Mint underlying, receive dTokens, immediately redeem dTokens in the same block
+     * - [ ] user receives full original underlying (no interest)
+     * - [ ] surplus contains 0 cTokens
+     * - [ ] user's balance of dTokens / underlying is 0
+     * - [ ] cToken `AccrueInterest` + `Mint` + `Redeem` events, dToken `Accrue` + `Mint` + `Redeem` + `Transfer` events, and underlying `Transfer` events are all present & correct
+     *
+     *  Account starts with 100 DAI/USDC tokens.
+     */
+    async function testScenario7() {
+        console.log("Scenario 7 ");
+        const snapshot = await tester.takeSnapshot();
+        const { result: snapshotId } = snapshot;
+
+        const Scenario7Helper = await tester.runTest(
+            `Mock Scenario7Helper contract deployment for ${contractName}`,
+            tester.Scenario7HelperDeployer,
+            '',
+            'deploy',
+        );
+
+        let underlyingBalance;
+        await tester.runTest(
+            `Check that we start with 100 ${underlyingSymbols[contractName]}`,
+            Underlying,
+            'balanceOf',
+            'call',
+            [tester.address],
+            true,
+            value => {
+                underlyingBalance = web3.utils.toBN(value);
+                assert.strictEqual(
+                    value, '1'.padEnd(underlyingDecimals[contractName] + 3, '0')
+                )
+            },
+        );
+
+        await tester.runTest(
+            `${underlyingSymbols[contractName]} can approve ${contractName} in order to mint dTokens`,
+            Underlying,
+            'approve',
+            'send',
+            [Scenario7Helper.options.address, constants.FULL_APPROVAL]
+        );
+
+        // Phase 1
+        await tester.runTest(
+            `${contractName} Scenario 7, Phase 1`,
+            Scenario7Helper,
+            'phaseOne',
+            'send',
+            [
+                CToken.options.address,
+                DToken.options.address,
+                Underlying.options.address
+            ],
+            true,
+            receipt => {
+                const events = tester.getEvents(receipt, contractNames);
+                // TODO: validate?
+                // console.log(JSON.stringify(events, null, 2));
+            }
+        );
+
+        await tester.revertToSnapShot(snapshotId);
+    }
+
     // // Test snapshot and advance (time/block) functions
     await testSnapshot(web3, tester);
     await testAdvanceTimeAndBlockInDays(web3, tester);
@@ -3629,6 +3696,8 @@ async function runAllTests(web3, context, contractName, contract) {
     await testCannotMintBeforeApproval();
 
     await testScenario2(); // requires getUnderlyingTokens()
+
+    await testScenario7(); // requires getUnderlyingTokens()
 
     await testMint();
     await testPullSurplusAfterMint();
