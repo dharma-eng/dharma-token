@@ -3380,10 +3380,17 @@ async function runAllTests(web3, context, contractName, contract) {
             true,
             receipt => {
                 const events = tester.getEvents(receipt, contractNames);
-                console.log(JSON.stringify(events, null, 2));
 
-                const underlyingTransferFromCTokenEvent = events[10];
-                const underlyingTransferFromDTokenEvent = events[25];
+                let underlyingTransferFromCTokenEvent;
+                let underlyingTransferFromDTokenEvent;
+
+                if (contractName === "Dharma Dai") {
+                    underlyingTransferFromCTokenEvent = events[10];
+                    underlyingTransferFromDTokenEvent = events[25];
+                } else {
+                    underlyingTransferFromCTokenEvent = events[4];
+                    underlyingTransferFromDTokenEvent = events[13];
+                }
 
                 const { returnValues: underlyingTransferFromCToken } = underlyingTransferFromCTokenEvent;
                 const { returnValues: underlyingTransferFromDToken } = underlyingTransferFromDTokenEvent;
@@ -3402,12 +3409,13 @@ async function runAllTests(web3, context, contractName, contract) {
         const interestRateFromCToken = underlyingBalanceFromCToken.sub(halfOfUnderlying);
         const interestRateFromDToken = underlyingBalanceFromDToken.sub(halfOfUnderlying);
 
+        const calculatedInterestRateFromDToken = interestRateFromCToken.sub(interestRateFromCToken.div(tester.TEN));
+
         console.log(`interestRateFromCToken ${interestRateFromCToken}`);
         console.log(`interestRateFromDToken ${interestRateFromDToken}`);
+        console.log(`calculatedInterestRateFromDToken ${calculatedInterestRateFromDToken}`);
 
-        const interestRatio = ((tester.ONE).sub(interestRateFromDToken.div(interestRateFromCToken)));
-
-        console.log(`interestRatio: ${interestRatio}`);
+        assert.strictEqual(interestRateFromDToken.toString(), calculatedInterestRateFromDToken.toString());
 
         await tester.revertToSnapShot(snapshotId);
     }
