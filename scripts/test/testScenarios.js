@@ -3568,11 +3568,10 @@ async function runAllTests(web3, context, contractName, contract) {
 
     /**
      * Send in underlying, receive dTokens, wait for t blocks, pull surplus, immediately redeem dTokens
-     *  - [ ] account receives original underlying + 90% of total compound interest
-     *  - [ ] user receives original underlying + 90% of total compound interest
+     *  - [X] user receives original underlying + 90% of total compound interest
      *  - [ ] vault receives 10% of total compound interest represented as cTokens
-     *  - [ ] surplus contains 0 cTokens
-     *  - [ ] user's balance of dTokens / underlying 0
+     *  - [X] surplus contains 0 cTokens
+     *  - [X] user's balance of dTokens / underlying 0
      *  - [ ] quoted supply rate at `t0` is correct
      *  - [ ] quoted spread rate at `t0` is correct
      *  - [ ] cToken `AccrueInterest` + `Mint` + `Redeem` + `Transfer` events, dToken `Accrue` + `Mint` + `Redeem`+ `CollectSurplus` + `Transfer` events, and underlying `Transfer` events are all present & correct
