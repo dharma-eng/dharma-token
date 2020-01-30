@@ -14,16 +14,16 @@ contract Scenario0Helper {
   uint256 public underlyingUsedToMintEachToken;
   uint256 public cTokensMinted;
   uint256 public dTokensMinted;
+  uint256 public initialSurplus;
 
   uint256 public timeOne;
   uint256 public blockOne;
   uint256 public underlyingReturnedFromCTokens;
   uint256 public underlyingReturnedFromDTokens;
-  uint256 public interestRateFromCToken;
-  uint256 public interestRateFromDToken;
-  uint256 public calculatedInterestRateFromDToken;
-  uint256 public calculatedSurplus;
-  uint256 public dTokenSurplus;
+  uint256 public interestEarnedFromCTokens;
+  uint256 public interestEarnedFromDTokens;
+  uint256 public finalSurplus;
+  uint256 public interestAccruedToSurplus;
 
   uint256 private constant _SCALING_FACTOR = 1e18;
 
@@ -37,6 +37,9 @@ contract Scenario0Helper {
     blockZero = block.number;
 
     ERC20Interface dTokenBalance = ERC20Interface(address(dToken));
+
+    // get the initial underlying surplus on the dToken.
+    initialSurplus = dToken.getSurplusUnderlying();
 
     // ensure that this address doesn't have any underlying tokens yet.
     require(
@@ -162,49 +165,65 @@ contract Scenario0Helper {
       "Underlying transfer out after dToken redeem failed."
     );
 
-    // interest earned on cTokens
-    interestRateFromCToken = underlyingReturnedFromCTokens.sub(underlyingUsedToMintEachToken);
+    // determine the appreciation of the cToken over the period (scaled up).
+    interestEarnedFromCTokens = (
+      underlyingReturnedFromCTokens.mul(_SCALING_FACTOR)
+    ).div(underlyingUsedToMintEachToken);
 
-    // interest earned on dTokens
-    interestRateFromDToken = underlyingReturnedFromDTokens.sub(underlyingUsedToMintEachToken);
+    // determine the appreciation of the dToken over the period (scaled up).
+    interestEarnedFromDTokens = (
+      underlyingReturnedFromDTokens.mul(_SCALING_FACTOR)
+    ).div(underlyingUsedToMintEachToken);
 
-    calculatedInterestRateFromDToken = interestRateFromCToken.sub(interestRateFromCToken.div(10));
+    // appreciation of dToken over period should be 90% of cToken appreciation.
+    uint256 ninetyPercentOfInterestEarnedFromCTokens = ((
+      (interestEarnedFromCTokens.sub(_SCALING_FACTOR)).mul(9)
+    ).div(10)).add(_SCALING_FACTOR);
 
+    // ensure that dToken appreciation does not exceed 90% of cToken's.
     require(
-      calculatedInterestRateFromDToken >= interestRateFromDToken,
-      "Interest rate earned on dToken is at most 90%."
+      ninetyPercentOfInterestEarnedFromCTokens >= interestEarnedFromDTokens,
+      "Interest earned on dTokens exceeds 90% of amount earned on cTokens."
     );
 
-    // ensure that interest rates earned on dTokens is at least 99.99999% of expected interest rate
+    // ensure dToken appreciation is at least 99.99999% of expected amount.
     require(
       (
-      interestRateFromDToken.mul(_SCALING_FACTOR)
-      ).div(calculatedInterestRateFromDToken) >= _SCALING_FACTOR.sub(1e11),
-      "Interest rate received from dTokens is 99.99999% of expected."
+        interestEarnedFromDTokens.mul(_SCALING_FACTOR)
+      ).div(
+        ninetyPercentOfInterestEarnedFromCTokens
+      ) >= _SCALING_FACTOR.sub(1e11),
+      "Interest earned on dTokens is < 99.99999% of expected."
     );
 
-    // Surplus should be 10% of interest earned
-    calculatedSurplus = interestRateFromCToken.div(10);
+    // get the final underlying surplus on the dToken.
+    finalSurplus = dToken.getSurplusUnderlying();
 
-    // get the surplus on the dToken
-    dTokenSurplus = dToken.getSurplus();
+    // determine difference in underlying surplus and in returned underlying.
+    uint256 differenceInSurplus = finalSurplus.sub(initialSurplus);
+    uint256 differenceInReturnedUnderlying = underlyingReturnedFromCTokens.sub(
+      underlyingReturnedFromDTokens
+    );
 
+    // ensure surplus did not accrue faster than cToken - dToken underlying.
     require(
-      calculatedSurplus >= dTokenSurplus,
-      "Surplus is at most 10% of."
+      differenceInReturnedUnderlying >= differenceInSurplus,
+      "Surplus amount accrued faster than difference in returned underlying."
     );
 
-    // ensure that interest rates earned on dTokens is at least 99.99999% of expected interest rate
-//    require(
-//      (
-//      dTokenSurplus.mul(_SCALING_FACTOR)
-//      ).div(calculatedSurplus) >= _SCALING_FACTOR.sub(1e11),
-//      "Surplus is 99.99999% of expected."
-//    );
-//
-//    require(
-//      dTokenSurplus == interestRateFromDToken.div(10),
-//      "Surplus is 10% of total interest earned on dTokens."
-//    );
+    // ensure accrued surplus (if precise) is at least 99% of expected amount.
+    if (differenceInSurplus > 100) {
+      require(
+        (
+          differenceInSurplus.mul(_SCALING_FACTOR)
+        ).div(differenceInReturnedUnderlying) >= _SCALING_FACTOR.sub(1e16),
+        "Difference in accrued surplus is < 99% of expected amount."
+      );
+    } else {
+      require(
+        differenceInReturnedUnderlying <= 100,
+        "Difference in accrued surplus deviates oddly from expected amount."
+      );
+    }
   }
 }
