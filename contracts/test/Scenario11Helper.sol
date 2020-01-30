@@ -6,15 +6,14 @@ import "../../interfaces/DTokenInterface.sol";
 import "../../interfaces/ERC20Interface.sol";
 
 
-// Send in cTokens, receive dTokens, immediately redeem dTokens to underlying in
+// Send in cTokens, receive dTokens, immediately redeem dTokens to cTokens in
 // the same block
-contract Scenario7Helper {
+contract Scenario11Helper {
   using SafeMath for uint256;
 
   uint256 public cTokensMinted;
-  uint256 public underlyingEquivalentOfCTokensUsedToMint;
   uint256 public dTokensMinted;
-  uint256 public underlyingReturnedFromDTokens;
+  uint256 public cTokensReturnedFromDTokens;
 
   uint256 private constant _SCALING_FACTOR = 1e18;
 
@@ -83,11 +82,6 @@ contract Scenario7Helper {
     // get the number of cTokens minted.
     cTokensMinted = cToken.balanceOf(address(this));
 
-    // get the underlying equivalent value of the minted cTokens.
-    underlyingEquivalentOfCTokensUsedToMint = (
-      cTokensMinted.mul(cToken.exchangeRateCurrent())
-    ).div(_SCALING_FACTOR);
-
     // mint dTokens using cTokens.
     dTokensMinted = dToken.mintViaCToken(cTokensMinted);
     require(
@@ -101,29 +95,23 @@ contract Scenario7Helper {
       "cToken balance must end at 0."
     );
 
-  	// ensure that this address doesn't have any underlying tokens left.
-  	require(
-  	  underlying.balanceOf(address(this)) == 0,
-  	  "underlying balance in this contract must be 0 after minting."
-  	);
-
-    // redeem dTokens for underlying.
-    underlyingReturnedFromDTokens = dToken.redeem(dTokensMinted);
+    // redeem dTokens for cTokens.
+    cTokensReturnedFromDTokens = dToken.redeemToCToken(dTokensMinted);
     require(
-      underlyingReturnedFromDTokens == underlying.balanceOf(address(this)),
-      "underlying redeemed from dTokens do not match returned value."
+      cTokensReturnedFromDTokens == cToken.balanceOf(address(this)),
+      "cTokens redeemed from dTokens do not match returned value."
     );
 
-    // return the underlying balance to the caller.
+    // return the cToken balance to the caller.
     require(
-      underlying.transfer(msg.sender, underlyingReturnedFromDTokens),
-      "Underlying transfer out after dToken redeem failed."
+      cToken.transfer(msg.sender, cTokensReturnedFromDTokens),
+      "cToken transfer out after dToken redeem failed."
     );
 
-    // ensure that this address doesn't have any underlying tokens left.
+    // ensure that this address doesn't have any cTokens left.
     require(
-      underlying.balanceOf(address(this)) == 0,
-      "underlying balance must end at 0."
+      cToken.balanceOf(address(this)) == 0,
+      "cToken balance must end at 0."
     );
 
     // ensure that this address doesn't have any dTokens left.
@@ -132,18 +120,18 @@ contract Scenario7Helper {
       "dToken balance must end at 0."
     );
 
-    // ensure that underlying returned does not exceed underlying supplied.
+    // ensure that cTokens returned does not exceed cTokens supplied.
     require(
-      underlyingEquivalentOfCTokensUsedToMint >= underlyingReturnedFromDTokens,
-      "Underlying received exceeds underlying equivalent cTokens supplied."
+      cTokensMinted >= cTokensReturnedFromDTokens,
+      "Underlying cTokens returned exceeds cTokens supplied."
     );
 
-    // ensure that underlying returned is at least 99.99999% of that supplied.
+    // ensure that cTokens returned are at least 99.99999% of those supplied.
     require(
       (
-        underlyingReturnedFromDTokens.mul(_SCALING_FACTOR)
-      ).div(underlyingEquivalentOfCTokensUsedToMint) >= _SCALING_FACTOR.sub(1e11),
-      "Underlying received < 99.99999% of underlying equivalent cTokens supplied."
+        cTokensReturnedFromDTokens.mul(_SCALING_FACTOR)
+      ).div(cTokensMinted) >= _SCALING_FACTOR.sub(1e11),
+      "cTokens returned < 99.99999% of cTokens supplied."
     );
   }
 }
