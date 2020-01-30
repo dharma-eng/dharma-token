@@ -3567,6 +3567,107 @@ async function runAllTests(web3, context, contractName, contract) {
     }
 
     /**
+     * Send in underlying, receive dTokens, wait for t blocks, pull surplus, immediately redeem dTokens
+     *  - [ ] account receives original underlying + 90% of total compound interest
+     *  - [ ] user receives original underlying + 90% of total compound interest
+     *  - [ ] vault receives 10% of total compound interest represented as cTokens
+     *  - [ ] surplus contains 0 cTokens
+     *  - [ ] user's balance of dTokens / underlying 0
+     *  - [ ] quoted supply rate at `t0` is correct
+     *  - [ ] quoted spread rate at `t0` is correct
+     *  - [ ] cToken `AccrueInterest` + `Mint` + `Redeem` + `Transfer` events, dToken `Accrue` + `Mint` + `Redeem`+ `CollectSurplus` + `Transfer` events, and underlying `Transfer` events are all present & correct
+     *
+     *  Account starts with 100 DAI/USDC tokens.
+     */
+    async function testScenario5() {
+        console.log("Scenario 5 ");
+        const snapshot = await tester.takeSnapshot();
+        const { result: snapshotId } = snapshot;
+
+        const Scenario5Helper = await tester.runTest(
+            `Mock Scenario5Helper contract deployment for ${contractName}`,
+            tester.Scenario5HelperDeployer,
+            '',
+            'deploy',
+        );
+
+        let underlyingBalance;
+        await tester.runTest(
+            `Check that we start with 100 ${underlyingSymbols[contractName]}`,
+            Underlying,
+            'balanceOf',
+            'call',
+            [tester.address],
+            true,
+            value => {
+                underlyingBalance = web3.utils.toBN(value);
+                assert.strictEqual(
+                    value, '1'.padEnd(underlyingDecimals[contractName] + 3, '0')
+                )
+            },
+        );
+
+        await tester.runTest(
+            `${underlyingSymbols[contractName]} can approve ${contractName} in order to mint dTokens`,
+            Underlying,
+            'approve',
+            'send',
+            [Scenario5Helper.options.address, constants.FULL_APPROVAL]
+        );
+
+        // Phase 1
+        await tester.runTest(
+            `${contractName} Scenario 5, Phase 1`,
+            Scenario5Helper,
+            'phaseOne',
+            'send',
+            [
+                CToken.options.address,
+                DToken.options.address,
+                Underlying.options.address
+            ],
+            true,
+            receipt => {
+                const events = tester.getEvents(receipt, contractNames);
+            }
+        );
+
+        // Advance blocks
+        let block = await web3.eth.getBlock('latest');
+        const { number: blockNumber } = block;
+
+        const blocksToAdvance  = 1000;
+        await advanceByBlocks(blocksToAdvance, tester);
+
+        block = await web3.eth.getBlock('latest');
+        const { number: currentBlockNumber } = block;
+
+        assert.strictEqual(currentBlockNumber, blockNumber + blocksToAdvance);
+
+        let underlyingBalanceFromCToken;
+        let underlyingBalanceFromDToken;
+        // Phase 2
+        await tester.runTest(
+            `${contractName} Scenario 5, Phase 2`,
+            Scenario5Helper,
+            'phaseTwo',
+            'send',
+            [
+                CToken.options.address,
+                DToken.options.address,
+                Underlying.options.address,
+            ],
+            true,
+            receipt => {
+                const events = tester.getEvents(receipt, contractNames);
+                // TODO: validate?
+            }
+        );
+
+        await tester.revertToSnapShot(snapshotId);
+    }
+
+    /**
      * Send in cTokens, receive dTokens, immediately redeem dTokens to underlying
      * in the same block
      * - [x] user receives full original underlying less dust (no interest)
@@ -3858,6 +3959,7 @@ async function runAllTests(web3, context, contractName, contract) {
     // Note: scenarios require getUnderlyingTokens()
     await testScenario0();
     await testScenario2();
+    await testScenario5();
     await testScenario7();
     await testScenario9();
     await testScenario11();
@@ -3885,7 +3987,6 @@ async function runAllTests(web3, context, contractName, contract) {
     await testEdgeCases();
 
     await tester.revertToSnapShot(initialSnapshotId);
-
 
     console.log(
         `completed ${tester.passed + tester.failed} test${tester.passed + tester.failed === 1 ? '' : 's'} ` +

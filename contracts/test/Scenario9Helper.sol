@@ -64,7 +64,7 @@ contract Scenario9Helper {
   	);
 
     // pull in underlying from caller in multiples of 1 million.
-    uint256 underlyingUsedToMint = (underlyingBalance / 1000000) * 1000000;
+    underlyingUsedToMint = (underlyingBalance / 1000000) * 1000000;
   	require(
   	  underlying.transferFrom(msg.sender, address(this), underlyingUsedToMint),
   	  "Underlying transfer in failed."

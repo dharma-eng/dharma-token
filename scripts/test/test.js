@@ -24,6 +24,8 @@ const Scenario0HelperArtifact = require('../../build/contracts/Scenario0Helper.j
 
 const Scenario2HelperArtifact = require('../../build/contracts/Scenario2Helper.json');
 
+const Scenario5HelperArtifact = require('../../build/contracts/Scenario5Helper.json');
+
 const Scenario7HelperArtifact = require('../../build/contracts/Scenario7Helper.json');
 
 const Scenario9HelperArtifact = require('../../build/contracts/Scenario9Helper.json');
@@ -118,6 +120,14 @@ class Tester {
             Scenario2HelperArtifact.bytecode
         );
         this.Scenario2HelperDeployer = Scenario2HelperDeployer;
+
+        const Scenario5HelperDeployer = new this.web3.eth.Contract(
+            Scenario5HelperArtifact.abi
+        );
+        Scenario5HelperDeployer.options.data = (
+            Scenario5HelperArtifact.bytecode
+        );
+        this.Scenario5HelperDeployer = Scenario5HelperDeployer;
 
         const Scenario7HelperDeployer = new this.web3.eth.Contract(
             Scenario7HelperArtifact.abi
