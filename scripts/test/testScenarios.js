@@ -89,7 +89,7 @@ const validateDTokenAccrueEvent = (
     return [dTokenExchangeRate, cTokenExchangeRate]
 }
 
-const prepareToValidateAccrual = async (web3, dToken) => {
+const prepareToValidateAccrual = async (web3, dToken, skipBlock = false) => {
     const slotZero = await web3.eth.getStorageAt(dToken.options.address, 0)  
     const slotRaw = slotZero.slice(2).padStart(64, '0')
 
@@ -103,7 +103,10 @@ const prepareToValidateAccrual = async (web3, dToken) => {
         '0x' + slotRaw.slice(8, 36)
     )
 
-    const blockNumber = (await web3.eth.getBlock('latest')).number
+    let blockNumber = null;
+    if (!skipBlock) {
+        blockNumber = (await web3.eth.getBlock('latest')).number
+    }
 
     // last accrual block is stored at the start of slot zero.
     const lastAccrualBlock = parseInt(web3.utils.toBN(
@@ -3573,7 +3576,8 @@ async function runAllTests(web3, context, contractName, contract) {
     }
 
     /**
-     * Send in underlying, receive dTokens, wait for t blocks, pull surplus, immediately redeem dTokens
+     * Send in underlying, receive dTokens, wait for t blocks, redeem dTokens,
+     * .
      *  - [X] user receives original underlying + 90% of total compound interest
      *  - [ ] vault receives 10% of total compound interest represented as cTokens
      *  - [X] surplus contains 0 cTokens
@@ -3643,7 +3647,7 @@ async function runAllTests(web3, context, contractName, contract) {
 
         let blocksToAdvance;
         if (context !== 'coverage') {
-            blocksToAdvance  = 150000000; // ~60 years
+            blocksToAdvance  = 50000000; // ~20 years
             block = await tester.advanceTimeAndBlocks(blocksToAdvance);
         } else {
             blocksToAdvance  = 1000; // a few hours
@@ -3661,6 +3665,183 @@ async function runAllTests(web3, context, contractName, contract) {
         await tester.runTest(
             `${contractName} Scenario 5, Phase 2`,
             Scenario5Helper,
+            'phaseTwo',
+            'send',
+            [
+                CToken.options.address,
+                DToken.options.address,
+                Underlying.options.address,
+            ],
+            true,
+            receipt => {
+                const events = tester.getEvents(receipt, contractNames);
+                // TODO: validate?
+            }
+        );
+
+        await tester.revertToSnapShot(snapshotId);
+    }
+
+    /**
+     * Send in underlying, receive dTokens, wait for t blocks, redeem dTokens,
+     * immediately pull surplus. Interaction with dToken at time t occurs prior
+     * to interaction with the cToken.
+     *  - [X] user receives original underlying + 90% of total compound interest
+     *  - [ ] vault receives 10% of total compound interest represented as cTokens
+     *  - [X] surplus contains 0 cTokens
+     *  - [X] user's balance of dTokens / underlying 0
+     *  - [ ] quoted supply rate at `t0` is correct
+     *  - [ ] quoted spread rate at `t0` is correct
+     *  - [ ] cToken `AccrueInterest` + `Mint` + `Redeem` + `Transfer` events, dToken `Accrue` + `Mint` + `Redeem`+ `CollectSurplus` + `Transfer` events, and underlying `Transfer` events are all present & correct
+     *
+     *  Account starts with 100 DAI/USDC tokens.
+     */
+    async function testScenario6() {
+        console.log("Scenario 6 ");
+        const snapshot = await tester.takeSnapshot();
+        const { result: snapshotId } = snapshot;
+
+        const Scenario6Helper = await tester.runTest(
+            `Mock Scenario6Helper contract deployment for ${contractName}`,
+            tester.Scenario6HelperDeployer,
+            '',
+            'deploy',
+        );
+
+        let underlyingBalance;
+        await tester.runTest(
+            `Check that we start with 100 ${underlyingSymbols[contractName]}`,
+            Underlying,
+            'balanceOf',
+            'call',
+            [tester.address],
+            true,
+            value => {
+                underlyingBalance = web3.utils.toBN(value);
+                assert.strictEqual(
+                    value, '1'.padEnd(underlyingDecimals[contractName] + 3, '0')
+                )
+            },
+        );
+
+        await tester.runTest(
+            `${underlyingSymbols[contractName]} can approve ${contractName} in order to mint dTokens`,
+            Underlying,
+            'approve',
+            'send',
+            [Scenario6Helper.options.address, constants.FULL_APPROVAL]
+        );
+
+        // Phase 1
+        await tester.runTest(
+            `${contractName} Scenario 6, Phase 1`,
+            Scenario6Helper,
+            'phaseOne',
+            'send',
+            [
+                CToken.options.address,
+                DToken.options.address,
+                Underlying.options.address
+            ],
+            true,
+            receipt => {
+                const events = tester.getEvents(receipt, contractNames);
+            }
+        );
+
+        // Advance blocks
+        let block = await web3.eth.getBlock('latest');
+        const { number: blockNumberOne } = block;
+
+        let blocksToAdvance;
+        if (context !== 'coverage') {
+            blocksToAdvance  = 50000000; // ~20 years
+            block = await tester.advanceTimeAndBlocks(blocksToAdvance);
+        } else {
+            blocksToAdvance  = 100; // a little bit
+            await advanceByBlocks(blocksToAdvance, tester);
+            block = await web3.eth.getBlock('latest');
+        }
+
+        const { number: currentBlockNumberOne } = block;
+
+        assert.strictEqual(currentBlockNumberOne, blockNumberOne + blocksToAdvance);
+
+        await tester.runTest(
+            `Accrue ${cTokenSymbols[contractName]} interest`,
+            CToken,
+            'accrueInterest',
+            'send',
+            [],
+            true,
+            receipt => {
+                const events = tester.getEvents(receipt, contractNames)
+
+                validateCTokenInterestAccrualEvents(
+                    events, 0, cTokenSymbols[contractName]
+                )
+            }
+        )
+
+        if (context !== 'coverage') {
+            blocksToAdvance  = 50000000; // ~20 years
+            block = await tester.advanceTimeAndBlocks(blocksToAdvance);
+        } else {
+            blocksToAdvance  = 100; // a little bit
+            await advanceByBlocks(blocksToAdvance, tester);
+            block = await web3.eth.getBlock('latest');
+        }
+
+        const { number: currentBlockNumberTwo } = block;
+
+        assert.strictEqual(
+            currentBlockNumberTwo, currentBlockNumberOne + blocksToAdvance + 1
+        );
+
+        [
+            storedDTokenExchangeRate,
+            storedCTokenExchangeRate
+        ] = await prepareToValidateAccrual(web3, DToken, true);
+
+        await tester.runTest(
+            `Accrue ${contractName} interest `,
+            DToken,
+            'accrueInterest',
+            'send',
+            [],
+            true,
+            receipt => {
+                const events = tester.getEvents(receipt, contractNames)
+
+                assert.strictEqual(events.length, 1);
+
+                [dTokenExchangeRate, cTokenExchangeRate] = validateDTokenAccrueEvent(
+                    events, 0, contractName, web3, tester, storedDTokenExchangeRate, storedCTokenExchangeRate
+                );
+            }
+        );
+
+        if (context !== 'coverage') {
+            blocksToAdvance  = 50000000; // ~20 years
+            block = await tester.advanceTimeAndBlocks(blocksToAdvance);
+        } else {
+            blocksToAdvance  = 100; // a little bit
+            await advanceByBlocks(blocksToAdvance, tester);
+            block = await web3.eth.getBlock('latest');
+        }
+
+        const { number: currentBlockNumberThree } = block;
+
+        assert.strictEqual(
+            currentBlockNumberThree, currentBlockNumberTwo + blocksToAdvance + 1
+        );
+
+        let underlyingBalanceFromCToken;
+        let underlyingBalanceFromDToken;
+        // Phase 2
+        await tester.runTest(
+            `${contractName} Scenario 6, Phase 2`,
+            Scenario6Helper,
             'phaseTwo',
             'send',
             [
@@ -3958,19 +4139,26 @@ async function runAllTests(web3, context, contractName, contract) {
     const initialSnapshot = await tester.takeSnapshot();
     const { result: initialSnapshotId } = initialSnapshot;
 
+    /*
     await testPureFunctions();
     await testAccrueInterest();
     await testSupplyRatePerBlock();
     await testExchangeRate();
     await testAccrueInterestFromAnyAccount();
     await testPullSurplusBeforeMints();
+    */
+
     await getUnderlyingTokens();
 
     // Start testing scenarios
     // Note: scenarios require getUnderlyingTokens()
+    /*
     await testScenario0();
     await testScenario2();
     await testScenario5();
+    */
+    await testScenario6();
+    /*
     await testScenario7();
     await testScenario9();
     await testScenario11();
@@ -3996,6 +4184,7 @@ async function runAllTests(web3, context, contractName, contract) {
     await testRequireNonNull();
     await testBlockAccrual();
     await testEdgeCases();
+    */
 
     await tester.revertToSnapShot(initialSnapshotId);
 
