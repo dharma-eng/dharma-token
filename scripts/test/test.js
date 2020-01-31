@@ -309,17 +309,95 @@ class Tester {
                 id: new Date().getTime()
             }, (err, result) => {
                 if (err) { return reject(err) }
-                // const newBlockHash = this.web3.eth.getBlock('latest').hash
-                // return resolve(newBlockHash)
-                resolve()
+                return resolve(result)
             })
         })
+    }
+
+    async rpc(request) {
+        return new Promise(
+            (okay, fail) => this.web3.currentProvider.send(
+                request, (err, res) => err ? fail(err) : okay(res)
+            )
+        );
+    }
+
+    async getLatestBlockNumber() {
+        let { result: num } = await this.rpc({
+            method: 'eth_blockNumber',
+            id: new Date().getTime() // for snapshotting
+        });
+        return num;
+    }
+
+    async advanceBlocks(blocksToAdvance) {
+        if (blocksToAdvance < 1) {
+            throw new Error('must advance at least one block.');
+        }
+
+        let currentBlockNumberHex = await this.getLatestBlockNumber();
+
+        const extraBlocks = blocksToAdvance - 1;
+        const extraBlocksHex = '0x' + (
+            extraBlocks + parseInt(currentBlockNumberHex)
+        ).toString(16);
+   
+        const nextBlockNumber = blocksToAdvance + 1;
+        const nextBlockNumberHex = '0x' + (
+            nextBlockNumber + parseInt(currentBlockNumberHex)
+        ).toString(16);
+
+        await this.rpc({
+            method: 'evm_mineBlockNumber',
+            params: [extraBlocksHex],
+            id: new Date().getTime()
+        });
+
+        const newBlockNumberHex = '0x' + (
+            blocksToAdvance + parseInt(currentBlockNumberHex)
+        ).toString(16);
+        currentBlockNumberHex = await this.getLatestBlockNumber();
+        
+        if (currentBlockNumberHex !== newBlockNumberHex) {
+            console.error(
+                `current block is now ${
+                    parseInt(currentBlockNumberHex)
+                } - evm_mineBlockNumber failed... (expected ${
+                    parseInt(newBlockNumberHex)
+                })`
+            );
+            process.exit(1);    
+        }
+
+        const dummyTxReceipt = await this.web3.eth.sendTransaction({
+            from: this.address,
+            to: this.address,
+            data: '0x',
+            value: 0,
+            gas: 21000,
+            gasPrice: 1
+        });
+
+        return await this.web3.eth.getBlock(dummyTxReceipt.blockHash);
     }
 
     async advanceTimeAndBlock(time) {
         await this.advanceTime(time);
         await this.advanceBlock();
         return Promise.resolve(this.web3.eth.getBlock('latest'))
+    }
+
+    async advanceTimeAndBlocks(blocks) {
+        if (blocks < 2) {
+            return reject('must advance by at least two blocks.')
+        }
+        let block = await this.web3.eth.getBlock(await this.getLatestBlockNumber())
+        await this.advanceTime(blocks * 15);
+        block = await this.web3.eth.getBlock(await this.getLatestBlockNumber())
+        
+        // next block must be extracted from this function ('getBlock' breaks)
+        block = await this.advanceBlocks(blocks - 1);
+        return block;
     }
 
     signHashedPrefixedHexString(hashedHexString, account) {

@@ -6,7 +6,6 @@ let contractNames = constants.CONTRACT_NAMES;
 
 const SECONDS_PER_BLOCK = 15;
 const SECONDS_IN_A_DAY = 24 * 60 * 60;
-const MILISECONDS_IN_A_DAY = SECONDS_IN_A_DAY * 1000;
 const BLOCKS_PER_DAY = SECONDS_IN_A_DAY / SECONDS_PER_BLOCK;
 
 const tokenSymbols = {
@@ -3452,10 +3451,17 @@ async function runAllTests(web3, context, contractName, contract) {
         let block = await web3.eth.getBlock('latest');
         const { number: blockNumber } = block;
 
-        const blocksToAdvance  = 1000;
-        await advanceByBlocks(blocksToAdvance, tester);
 
-        block = await web3.eth.getBlock('latest');
+        let blocksToAdvance;
+        if (context !== 'coverage') {
+            blocksToAdvance  = 5000000; // a few years
+            block = await tester.advanceTimeAndBlocks(blocksToAdvance);
+        } else {
+            blocksToAdvance  = 1000; // a few hours
+            await advanceByBlocks(blocksToAdvance, tester);
+            block = await web3.eth.getBlock('latest');
+        }
+
         const { number: currentBlockNumber } = block;
 
         assert.strictEqual(currentBlockNumber, blockNumber + blocksToAdvance);
@@ -3635,10 +3641,16 @@ async function runAllTests(web3, context, contractName, contract) {
         let block = await web3.eth.getBlock('latest');
         const { number: blockNumber } = block;
 
-        const blocksToAdvance  = 1000;
-        await advanceByBlocks(blocksToAdvance, tester);
+        let blocksToAdvance;
+        if (context !== 'coverage') {
+            blocksToAdvance  = 150000000; // ~60 years
+            block = await tester.advanceTimeAndBlocks(blocksToAdvance);
+        } else {
+            blocksToAdvance  = 1000; // a few hours
+            await advanceByBlocks(blocksToAdvance, tester);
+            block = await web3.eth.getBlock('latest');
+        }
 
-        block = await web3.eth.getBlock('latest');
         const { number: currentBlockNumber } = block;
 
         assert.strictEqual(currentBlockNumber, blockNumber + blocksToAdvance);
@@ -3940,7 +3952,7 @@ async function runAllTests(web3, context, contractName, contract) {
 
     // // Test snapshot and advance (time/block) functions
     await testSnapshot(web3, tester);
-    await testAdvanceTimeAndBlockInDays(web3, tester);
+    await testAdvanceTimeAndBlockInDays(web3, tester, context);
     //
     // // Take initial snapshot to run function tests, and revert before starting scenarios.
     const initialSnapshot = await tester.takeSnapshot();
@@ -4054,8 +4066,8 @@ async function testSnapshot(web3, tester) {
     assert.strictEqual(beforeSnapshotBlockNumber, blockNumber);
 }
 
-async function testAdvanceTimeAndBlockInDays(web3, tester) {
-    const days = 1;
+async function testAdvanceTimeAndBlockInDays(web3, tester, context) {
+    const blocksToAdvance = 100;
 
     const blockBeforeSnapshot = await web3.eth.getBlock('latest');
     const { timestamp: timeBeforeSnapshot, number: blockNumberBeforeSnapshot } = blockBeforeSnapshot;
@@ -4063,35 +4075,37 @@ async function testAdvanceTimeAndBlockInDays(web3, tester) {
     const snapshot = await tester.takeSnapshot();
     const { result: snapshotId } = snapshot;
 
-    await advanceByDays(days, tester);
+    const before = Math.floor((new Date().getTime()) / 1000);
 
-    const newBlock = await web3.eth.getBlock('latest');
+    let newBlock;
+    if (context !== 'coverage') {
+        newBlock = await tester.advanceTimeAndBlocks(blocksToAdvance);
+    } else {
+        await advanceByBlocks(blocksToAdvance, tester);
+        newBlock = await web3.eth.getBlock('latest');
+    }
+
+    const after = Math.floor((new Date().getTime()) / 1000);
+
     const { timestamp: currentTime, number: currentBlockNumber } = newBlock;
 
-    const blocksToAdvance = days * BLOCKS_PER_DAY;
-    assert.strictEqual(blockNumberBeforeSnapshot + blocksToAdvance, currentBlockNumber);
+    assert.strictEqual(currentBlockNumber, blockNumberBeforeSnapshot + blocksToAdvance);
 
     const timeDifference = currentTime - timeBeforeSnapshot;
-    const differenceInDays = Math.ceil(timeDifference / MILISECONDS_IN_A_DAY);
 
-    assert.strictEqual(differenceInDays, days);
+    assert.strictEqual(timeDifference, (blocksToAdvance * 15) + (after - before));
 
     await tester.revertToSnapShot(snapshotId);
 }
 
-async function advanceByDays(days, tester) {
-    const blocksToAdvance = days * BLOCKS_PER_DAY;
-    const timeToAdvance = MILISECONDS_IN_A_DAY * days;
+async function advanceByBlocks(blocksToAdvance, tester) {
+    const timeToAdvance = blocksToAdvance * 15;
 
-    for (let i = 0; i < blocksToAdvance; i++){
+    await tester.advanceTime(timeToAdvance);
+
+    for (let i = 0; i < blocksToAdvance; i++) {
         await tester.advanceBlock();
     }
-    await tester.advanceTime(timeToAdvance);
-}
-
-async function advanceByBlocks(blocks, tester) {
-    const days = blocks / BLOCKS_PER_DAY;
-    await advanceByDays(days, tester);
 }
 
 
