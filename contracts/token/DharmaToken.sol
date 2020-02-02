@@ -4,7 +4,7 @@ import "./DharmaTokenHelpers.sol";
 import "../../interfaces/CTokenInterface.sol";
 import "../../interfaces/DTokenInterface.sol";
 import "../../interfaces/ERC20Interface.sol";
-
+import "../../interfaces/ERC1271Interface.sol";
 
 /**
  * @title DharmaToken
@@ -28,6 +28,9 @@ contract DharmaToken is ERC20Interface, DTokenInterface, DharmaTokenHelpers {
   // Slots two and three are entrypoints into balance and allowance mappings.
   mapping (address => uint256) private _balances;
   mapping (address => mapping (address => uint256)) private _allowances;
+
+  // Slot four is an entrypoint into a mapping for used meta-transaction hashes.
+  mapping (bytes32 => bool) private _executedMetaTxs;
 
   /**
    * @notice Transfer `underlyingToSupply` underlying tokens from `msg.sender`
@@ -447,6 +450,107 @@ contract DharmaToken is ERC20Interface, DTokenInterface, DharmaTokenHelpers {
   }
 
   /**
+   * @notice Modify the current allowance of `spender` for `owner` by `value`
+   * dTokens, increasing it if `increase` is true otherwise decreasing it, via a
+   * meta-transaction that expires at `expiration` (or does not expire if the
+   * value is zero) and uses `salt` as an additional input, validated using
+   * `signatures`.
+   * @param owner address The account granting the modified allowance.
+   * @param spender address The account to modify the allowance for.
+   * @param value uint256 The amount to modify the allowance by.
+   * @param increase bool A flag that indicates whether the allowance will be
+   * increased by the specified value (if true) or decreased by it (if false).
+   * @param expiration uint256 A timestamp indicating how long the modification
+   * meta-transaction is valid for - a value of zero will signify no expiration.
+   * @param salt bytes32 An arbitrary salt to be provided as an additional input
+   * to the hash digest used to validate the signatures or signatures.
+   * @param signatures bytes A signature, or collection of signatures, that the
+   * owner must provide in order to authorize the meta-transaction. If the
+   * account of the owner does not have any runtime code deployed to it, the
+   * signature will be verified using ecrecover; otherwise, it will be supplied
+   * to the owner along with the message digest and context via ERC-1271 for
+   * validation.
+   * @return A boolean indicating whether the modification was successful.
+   */
+  function modifyAllowanceViaMetaTransaction(
+    address owner,
+    address spender,
+    uint256 value,
+    bool increase,
+    uint256 expiration,
+    bytes32 salt,
+    bytes calldata signatures
+  ) external returns (bool success) {
+    require(expiration == 0 || now <= expiration, "Meta-transaction expired.");
+
+    // Construct the meta-transaction's message hash based on relevant context.
+    bytes memory context = abi.encodePacked(
+      address(this),
+      // _DTOKEN_VERSION,
+      this.modifyAllowanceViaMetaTransaction.selector,
+      expiration,
+      salt,
+      abi.encode(owner, spender, value, increase)
+    );
+    bytes32 messageHash = keccak256(context);
+
+    // Ensure message hash has never been used before and register it as used.
+    require(!_executedMetaTxs[messageHash], "Meta-transaction already used.");
+    _executedMetaTxs[messageHash] = true;
+
+    // Construct the digest to compare signatures against using EIP-191 0x45.
+    bytes32 digest = keccak256(
+      abi.encodePacked("\x19Ethereum Signed Message:\n32", messageHash)
+    );
+
+    // Calculate new allowance by applying modification to current allowance.
+    uint256 currentAllowance = _allowances[owner][spender];
+    uint256 newAllowance = (
+      increase ? currentAllowance.add(value) : currentAllowance.sub(value)
+    );
+
+    // Use EIP-1271 if owner is a contract - otherwise, use ecrecover.
+    if (_isContract(owner)) {
+      // Validate via ERC-1271 against the owner account.
+      bytes memory data = abi.encode(digest, context);
+      bytes4 magic = ERC1271Interface(owner).isValidSignature(data, signatures);
+      require(magic == bytes4(0x20c13b0b), "Invalid signatures.");
+    } else {
+      // Validate via ecrecover against the owner account.
+      _verifyRecover(owner, digest, signatures);
+    }
+
+    // Modify the allowance.
+    _approve(owner, spender, newAllowance);
+    success = true;
+  }
+
+  function getMetaTransactionDigest(
+    bytes4 functionSelector,
+    bytes calldata arguments,
+    uint256 expiration,
+    bytes32 salt
+  ) external view returns (bytes32 digest, bool valid) {
+    // Construct the meta-transaction's message hash based on relevant context.
+    bytes32 messageHash = keccak256(
+      abi.encodePacked(
+        address(this), functionSelector, expiration, salt, arguments
+      )
+    );
+
+    // Construct the digest to compare signatures against using EIP-191 0x45.
+    digest = keccak256(
+      abi.encodePacked("\x19Ethereum Signed Message:\n32", messageHash)
+    );
+
+    // The meta-transaction is valid if it has not been used and is not expired.
+    valid = (
+      !_executedMetaTxs[messageHash] &&
+      (expiration == 0 || now <= expiration)
+    );
+  }
+
+  /**
    * @notice View function to get the total dToken supply.
    * @return The total supply.
    */
@@ -745,6 +849,7 @@ contract DharmaToken is ERC20Interface, DTokenInterface, DharmaTokenHelpers {
    * @param value uint256 The size of the allowance to grant.
    */
   function _approve(address owner, address spender, uint256 value) private {
+    require(owner != address(0), "ERC20: approve for the zero address");
     require(spender != address(0), "ERC20: approve to the zero address");
 
     _allowances[owner][spender] = value;
@@ -846,5 +951,56 @@ contract DharmaToken is ERC20Interface, DTokenInterface, DharmaTokenHelpers {
   ) {
     (, cTokenSupplyRate) = _getCurrentCTokenRates();
     dTokenSupplyRate = cTokenSupplyRate.mul(9) / 10;
+  }
+
+  /**
+   * @notice Private view function to determine if a given account has runtime
+   * code or not - in other words, whether or not a contract is deployed to the
+   * account in question. Note that contracts that are in the process of being
+   * deployed will return false on this check.
+   * @param account address The account to check for contract runtime code.
+   * @return Whether or not there is contract runtime code at the account.
+   */
+  function _isContract(address account) private view returns (bool isContract) {
+    uint256 size;
+    assembly { size := extcodesize(account) }
+    isContract = size > 0;
+  }
+
+  /**
+   * @notice Private pure function to verify that a given signature of a digest
+   * resolves to the supplied account. Any error, including incorrect length,
+   * malleable signature types, or unsupported `v` values, will cause a revert.
+   * @param account address The account to validate against.
+   * @param digest bytes32 The digest to use.
+   * @param signature bytes The signature to verify.
+   */
+  function _verifyRecover(
+    address account, bytes32 digest, bytes memory signature
+  ) private pure {
+    // Ensure the signature length is correct.
+    require(
+      signature.length == 65,
+      "Must supply a single 65-byte signature when owner is not a contract."
+    );
+
+    // Divide the signature in r, s and v variables.
+    bytes32 r;
+    bytes32 s;
+    uint8 v;
+    assembly {
+      r := mload(add(signature, 0x20))
+      s := mload(add(signature, 0x40))
+      v := byte(0, mload(add(signature, 0x60)))
+    }
+
+    require(
+      uint256(s) <= 0x7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF5D576E7357A4501DDFE92F46681B20A0,
+      "Signature `s` value cannot be potentially malleable."
+    );
+
+    require(v == 27 || v == 28, "Signature `v` value not permitted.");
+
+    require(account == ecrecover(digest, v, r, s), "Invalid signature.");
   }
 }
