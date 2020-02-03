@@ -18,8 +18,8 @@ jobs:
         with:
           node-version: ${{ matrix.node-version }}
       - run: yarn build
-      env:
-        CI: true
+        env:
+          CI: true
 
   lint:
     runs-on: ubuntu-latest
