@@ -24,9 +24,12 @@ jobs:
 
   lint:
     runs-on: ubuntu-latest
-
     name: Run Linters
 
+    strategy:
+      matrix:
+        node-version: [12.x]
+        
     steps:
       - uses: actions/checkout@v2
       - name: GitHub Action for Yarn
