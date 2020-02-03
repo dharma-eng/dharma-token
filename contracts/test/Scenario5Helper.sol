@@ -23,8 +23,6 @@ contract Scenario5Helper {
   uint256 public blockOne;
   uint256 public underlyingReturnedFromCTokens;
   uint256 public underlyingReturnedFromDTokens;
-  uint256 public interestEarnedFromCTokens;
-  uint256 public interestEarnedFromDTokens;
   uint256 public finalSurplus;
   uint256 public cTokensSentToVault;
   uint256 public interestAccruedToSurplus;
@@ -213,12 +211,12 @@ contract Scenario5Helper {
     );
 
     // determine the appreciation of the cToken over the period (scaled up).
-    interestEarnedFromCTokens = (
+    uint256 interestEarnedFromCTokens = (
       underlyingReturnedFromCTokens.mul(_SCALING_FACTOR)
     ).div(underlyingUsedToMintEachToken);
 
     // determine the appreciation of the dToken over the period (scaled up).
-    interestEarnedFromDTokens = (
+    uint256 interestEarnedFromDTokens = (
       underlyingReturnedFromDTokens.mul(_SCALING_FACTOR)
     ).div(underlyingUsedToMintEachToken);
 
