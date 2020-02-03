@@ -3866,9 +3866,10 @@ async function runAllTests(web3, context, contractName, contract) {
         let block = await web3.eth.getBlock('latest');
         const { number: blockNumber } = block;
 
-
+        let accountNonce;
         let blocksToAdvance;
         if (context !== 'coverage') {
+            accountNonce = await web3.eth.getTransactionCount(tester.address) + 1
             blocksToAdvance  = 5000000; // a few years
             block = await tester.advanceTimeAndBlocks(blocksToAdvance);
         } else {
@@ -3914,7 +3915,11 @@ async function runAllTests(web3, context, contractName, contract) {
 
                 underlyingBalanceFromCToken = web3.utils.toBN(underlyingTransferFromCToken.value);
                 underlyingBalanceFromDToken = web3.utils.toBN(underlyingTransferFromDToken.value);
-            }
+            },
+            tester.account,
+            0,
+            undefined,
+            accountNonce
         );
 
         await tester.revertToSnapShot(snapshotId);
@@ -4057,8 +4062,10 @@ async function runAllTests(web3, context, contractName, contract) {
         let block = await web3.eth.getBlock('latest');
         const { number: blockNumber } = block;
 
+        let accountNonce;
         let blocksToAdvance;
         if (context !== 'coverage') {
+            accountNonce = await web3.eth.getTransactionCount(tester.address) + 1
             blocksToAdvance  = 50000000; // ~20 years
             block = await tester.advanceTimeAndBlocks(blocksToAdvance);
         } else {
@@ -4088,7 +4095,11 @@ async function runAllTests(web3, context, contractName, contract) {
             receipt => {
                 const events = tester.getEvents(receipt, contractNames);
                 // TODO: validate?
-            }
+            },
+            tester.account,
+            0,
+            undefined,
+            accountNonce
         );
 
         await tester.revertToSnapShot(snapshotId);
@@ -4165,8 +4176,10 @@ async function runAllTests(web3, context, contractName, contract) {
         let block = await web3.eth.getBlock('latest');
         const { number: blockNumberOne } = block;
 
+        let accountNonce;
         let blocksToAdvance;
         if (context !== 'coverage') {
+            accountNonce = await web3.eth.getTransactionCount(tester.address) + 1
             blocksToAdvance  = 50000000; // ~20 years
             block = await tester.advanceTimeAndBlocks(blocksToAdvance);
         } else {
@@ -4230,7 +4243,11 @@ async function runAllTests(web3, context, contractName, contract) {
                 [dTokenExchangeRate, cTokenExchangeRate] = validateDTokenAccrueEvent(
                     events, 0, contractName, web3, tester, storedDTokenExchangeRate, storedCTokenExchangeRate
                 );
-            }
+            },
+            tester.account,
+            0,
+            undefined,
+            accountNonce
         );
 
         if (context !== 'coverage') {
@@ -4265,7 +4282,11 @@ async function runAllTests(web3, context, contractName, contract) {
             receipt => {
                 const events = tester.getEvents(receipt, contractNames);
                 // TODO: validate?
-            }
+            },
+            tester.account,
+            0,
+            undefined,
+            accountNonce + 2
         );
 
         await tester.revertToSnapShot(snapshotId);

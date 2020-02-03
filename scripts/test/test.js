@@ -466,13 +466,15 @@ class Tester {
         value,
         gas,
         gasPrice,
-        transactionShouldSucceed
+        transactionShouldSucceed,
+        nonce
     ) {
         return instance.methods[method](...args).send({
             from: from,
             value: value,
             gas: gas,
-            gasPrice: gasPrice
+            gasPrice: gasPrice,
+            nonce: nonce
         }).on('confirmation', (confirmationNumber, r) => {
             confirmations[r.transactionHash] = confirmationNumber
         }).catch(error => {
@@ -520,7 +522,8 @@ class Tester {
         gas,
         gasPrice,
         transactionShouldSucceed,
-        assertionCallback
+        assertionCallback,
+        nonce
     ) {
         const receipt = await this.sendTransaction(
             instance,
@@ -530,7 +533,8 @@ class Tester {
             value,
             gas,
             gasPrice,
-            transactionShouldSucceed
+            transactionShouldSucceed,
+            nonce
         );
 
         const transactionSucceeded = receipt.status;
@@ -677,7 +681,8 @@ class Tester {
         assertionCallback,
         from,
         value,
-        gas
+        gas,
+        nonce
     ) {
         if (typeof(callOrSendOrDeploy) === 'undefined') {
             callOrSendOrDeploy = 'send'
@@ -717,7 +722,8 @@ class Tester {
                 gas,
                 1,
                 shouldSucceed,
-                assertionCallback
+                assertionCallback,
+                nonce
             )
         } else if (callOrSendOrDeploy === 'call') {
             ok = await this.call(
