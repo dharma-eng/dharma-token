@@ -11,4 +11,5 @@ contracts/test/Scenario9Helper.sol
 contracts/test/DharmaUpgradeBeaconController.sol
 contracts/test/UpgradeBeacon.sol
 contracts/test/UpgradeBeaconProxy.sol
+contracts/token/DharmaDaiImplementationV1.sol
 
