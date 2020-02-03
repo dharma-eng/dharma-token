@@ -18,7 +18,7 @@ contract MockERC1271 {
   function isValidSignature(bytes calldata, bytes calldata) external view returns (bytes4) {
     if (!active) {
       if (throwMe) {
-        revert('Nope!');
+        revert("Nope!");
       } else {
         return bytes4(0x0b0b0b0b);
       }
