@@ -1,3 +1,15 @@
 # skip
 node_modules
 contracts/Migrations.sol
+contracts/test/Scenario0Helper.sol
+contracts/test/Scenario11Helper.sol
+contracts/test/Scenario2Helper.sol
+contracts/test/Scenario5Helper.sol
+contracts/test/Scenario6Helper.sol
+contracts/test/Scenario7Helper.sol
+contracts/test/Scenario9Helper.sol
+contracts/test/DharmaUpgradeBeaconController.sol
+contracts/test/UpgradeBeacon.sol
+contracts/test/UpgradeBeaconProxy.sol
+contracts/token/DharmaDaiImplementationV1.sol
+
