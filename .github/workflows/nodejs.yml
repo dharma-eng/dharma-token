@@ -1,4 +1,4 @@
-name: Node.js CI
+name: Dharma Token CI
 
 on: [push]
 
@@ -23,8 +23,8 @@ jobs:
           CI: true
 
   lint:
-    runs-on: ubuntu-latest
     name: Run Linters
+    runs-on: ubuntu-latest
 
     strategy:
       matrix:
