@@ -20,16 +20,16 @@ contract Scenario11Helper {
   // First approve this contract to transfer underlying for the caller.
   function phaseOne(
     CTokenInterface cToken,
-  	DTokenInterface dToken,
-  	ERC20Interface underlying
+    DTokenInterface dToken,
+    ERC20Interface underlying
   ) external {
-  	ERC20Interface dTokenBalance = ERC20Interface(address(dToken));
+    ERC20Interface dTokenBalance = ERC20Interface(address(dToken));
 
-  	// ensure that this address doesn't have any underlying tokens yet.
-  	require(
-  	  underlying.balanceOf(address(this)) == 0,
-  	  "underlying balance must start at 0."
-  	);
+    // ensure that this address doesn't have any underlying tokens yet.
+    require(
+      underlying.balanceOf(address(this)) == 0,
+      "underlying balance must start at 0."
+    );
 
     // ensure that this address doesn't have any cTokens yet.
     require(
@@ -37,11 +37,11 @@ contract Scenario11Helper {
       "cToken balance must start at 0."
     );
 
-  	// ensure that this address doesn't have any dTokens yet.
-  	require(
-  	  dTokenBalance.balanceOf(address(this)) == 0,
-  	  "dToken balance must start at 0."
-  	);
+    // ensure that this address doesn't have any dTokens yet.
+    require(
+      dTokenBalance.balanceOf(address(this)) == 0,
+      "dToken balance must start at 0."
+    );
 
     // approve cToken to transfer underlying on behalf of this contract.
     require(
@@ -54,25 +54,25 @@ contract Scenario11Helper {
       "dToken Approval on cToken failed."
     );
 
-  	// get the underlying balance of the caller.
-  	uint256 underlyingBalance = underlying.balanceOf(msg.sender);
+    // get the underlying balance of the caller.
+    uint256 underlyingBalance = underlying.balanceOf(msg.sender);
 
-  	// ensure that it is at least 1 million.
-  	require(
-  	  underlyingBalance >= 1000000,
-  	  "Underlying balance is not at least 1 million of lowest-precision units."
-  	);
+    // ensure that it is at least 1 million.
+    require(
+      underlyingBalance >= 1000000,
+      "Underlying balance is not at least 1 million of lowest-precision units."
+    );
 
     // pull in underlying from caller in multiples of 1 million.
     uint256 underlyingUsedToMintCTokens = (
-      underlyingBalance / 1000000
+    underlyingBalance / 1000000
     ) * 1000000;
-  	require(
-  	  underlying.transferFrom(
+    require(
+      underlying.transferFrom(
         msg.sender, address(this), underlyingUsedToMintCTokens
       ),
-  	  "Underlying transfer in failed."
-  	);
+      "Underlying transfer in failed."
+    );
 
     // mint cTokens using underlying.
     require(
@@ -129,7 +129,7 @@ contract Scenario11Helper {
     // ensure that cTokens returned are at least 99.99999% of those supplied.
     require(
       (
-        cTokensReturnedFromDTokens.mul(_SCALING_FACTOR)
+      cTokensReturnedFromDTokens.mul(_SCALING_FACTOR)
       ).div(cTokensMinted) >= _SCALING_FACTOR.sub(1e11),
       "cTokens returned < 99.99999% of cTokens supplied."
     );
