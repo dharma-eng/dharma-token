@@ -6,6 +6,7 @@ import "../../interfaces/DTokenInterface.sol";
 import "../../interfaces/ERC20Interface.sol";
 import "../../interfaces/ERC1271Interface.sol";
 
+
 /**
  * @title DharmaToken
  * @author 0age (dToken mechanics derived from Compound cTokens, ERC20 mechanics
@@ -463,7 +464,7 @@ contract DharmaToken is ERC20Interface, DTokenInterface, DharmaTokenHelpers {
    * @param expiration uint256 A timestamp indicating how long the modification
    * meta-transaction is valid for - a value of zero will signify no expiration.
    * @param salt bytes32 An arbitrary salt to be provided as an additional input
-   * to the hash digest used to validate the signatures or signatures.
+   * to the hash digest used to validate the signatures.
    * @param signatures bytes A signature, or collection of signatures, that the
    * owner must provide in order to authorize the meta-transaction. If the
    * account of the owner does not have any runtime code deployed to it, the
@@ -525,28 +526,40 @@ contract DharmaToken is ERC20Interface, DTokenInterface, DharmaTokenHelpers {
     success = true;
   }
 
-  function getMetaTransactionDigest(
+  /**
+   * @notice View function to determine a meta-transaction message hash, and to
+   * determine if it is still valid (i.e. it has not yet been used and is not
+   * expired). The returned message hash will need to be prefixed using EIP-191
+   * 0x45 and hashed again in order to generate a final digest for the required
+   * signature - in other words, the same procedure utilized by `eth_Sign`.
+   * @param functionSelector bytes4 The function selector for the given
+   * meta-transaction. There is only one function selector available for v0:
+   * `0x2d657fa5` (the selector for `modifyAllowanceViaMetaTransaction`).
+   * @param arguments bytes The abi-encoded function arguments (aside from the
+   * `expiration`, `salt`, and `signatures` arguments) that should be supplied
+   * to the given function.
+   * @param expiration uint256 A timestamp indicating how long the given
+   * meta-transaction is valid for - a value of zero will signify no expiration.
+   * @param salt bytes32 An arbitrary salt to be provided as an additional input
+   * to the hash digest used to validate the signatures.
+   * @return The total supply.
+   */
+  function getMetaTransactionMessageHash(
     bytes4 functionSelector,
     bytes calldata arguments,
     uint256 expiration,
     bytes32 salt
-  ) external view returns (bytes32 digest, bool valid) {
+  ) external view returns (bytes32 messageHash, bool valid) {
     // Construct the meta-transaction's message hash based on relevant context.
-    bytes32 messageHash = keccak256(
+    messageHash = keccak256(
       abi.encodePacked(
         address(this), functionSelector, expiration, salt, arguments
       )
     );
 
-    // Construct the digest to compare signatures against using EIP-191 0x45.
-    digest = keccak256(
-      abi.encodePacked("\x19Ethereum Signed Message:\n32", messageHash)
-    );
-
     // The meta-transaction is valid if it has not been used and is not expired.
     valid = (
-      !_executedMetaTxs[messageHash] &&
-      (expiration == 0 || now <= expiration)
+      !_executedMetaTxs[messageHash] && (expiration == 0 || now <= expiration)
     );
   }
 
@@ -815,10 +828,10 @@ contract DharmaToken is ERC20Interface, DTokenInterface, DharmaTokenHelpers {
 
     uint256 senderBalance = _balances[sender];
     require(senderBalance >= amount, "Insufficient funds.");
-    
+
     _balances[sender] = senderBalance - amount; // overflow checked above.
     _balances[recipient] = _balances[recipient].add(amount);
-    
+
     emit Transfer(sender, recipient, amount);
   }
 
@@ -995,7 +1008,7 @@ contract DharmaToken is ERC20Interface, DTokenInterface, DharmaTokenHelpers {
     }
 
     require(
-      uint256(s) <= 0x7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF5D576E7357A4501DDFE92F46681B20A0,
+      uint256(s) <= _MAX_UNMALLEABLE_S,
       "Signature `s` value cannot be potentially malleable."
     );
 

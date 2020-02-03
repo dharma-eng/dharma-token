@@ -45,13 +45,15 @@ interface DTokenInterface {
   ) external returns (bool success);
 
   // View and pure functions do not trigger accrual on the dToken or the cToken.
+  function getMetaTransactionMessageHash(
+    bytes4 functionSelector, bytes calldata arguments, uint256 expiration, bytes32 salt
+  ) external view returns (bytes32 digest, bool valid);
   function totalSupplyUnderlying() external view returns (uint256);
   function balanceOfUnderlying(address account) external view returns (uint256 underlyingBalance);
   function exchangeRateCurrent() external view returns (uint256 dTokenExchangeRate);
   function supplyRatePerBlock() external view returns (uint256 dTokenInterestRate);
   function accrualBlockNumber() external view returns (uint256 blockNumber);
   function getSurplus() external view returns (uint256 cTokenSurplus);
-  function getMetaTransactionDigest(bytes4 functionSelector, bytes calldata arguments, uint256 expiration, bytes32 salt) external view returns (bytes32 digest, bool valid);
   function getSurplusUnderlying() external view returns (uint256 underlyingSurplus);
   function getSpreadPerBlock() external view returns (uint256 rateSpread);
   function getVersion() external pure returns (uint256 version);

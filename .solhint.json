@@ -4,6 +4,8 @@
     "indent": 2,
     "mark-callable-contracts": "off",
     "avoid-low-level-calls": "off",
+    "not-rely-on-time": "off",
+    "no-inline-assembly": "off",
     "reason-string": ["warn", {"maxLength": 200}]
   }
 }

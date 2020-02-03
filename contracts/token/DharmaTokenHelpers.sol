@@ -20,6 +20,9 @@ contract DharmaTokenHelpers is DharmaTokenOverrides {
   uint256 internal constant _HALF_OF_SCALING_FACTOR = 5e17;
   uint256 internal constant _COMPOUND_SUCCESS = 0;
   uint256 internal constant _MAX_UINT_112 = 5192296858534827628530496329220095;
+  uint256 internal constant _MAX_UNMALLEABLE_S = (
+    0x7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF5D576E7357A4501DDFE92F46681B20A0
+  );
 
   /**
    * @notice Internal pure function to determine if a call to Compound succeeded
