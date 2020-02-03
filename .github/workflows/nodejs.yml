@@ -4,7 +4,7 @@ on: [push]
 
 jobs:
   build:
-
+    name: Build Artifacts
     runs-on: ubuntu-latest
 
     strategy:
@@ -12,12 +12,30 @@ jobs:
         node-version: [12.x]
 
     steps:
-    - uses: actions/checkout@v2
-    - name: GitHub Action for Yarn
-      uses: Borales/actions-yarn@v2.1.0
-      with:
-        node-version: ${{ matrix.node-version }}
-    - run: yarn install
-    - run: yarn build
-      env:
-        CI: true
+      - uses: actions/checkout@v2
+      - name: Use Node.js
+        uses: actions/setup-node@v1
+        with:
+          node-version: ${{ matrix.node-version }}
+      - run: yarn install
+      - run: yarn build
+        env:
+          CI: true
+
+  lint:
+    runs-on: ubuntu-latest
+    name: Run Linters
+
+    strategy:
+      matrix:
+        node-version: [12.x]
+
+    steps:
+      - uses: actions/checkout@v2
+      - name: Use Node.js
+        uses: actions/setup-node@v1
+        with:
+          node-version: ${{ matrix.node-version }}
+      - run: yarn lint
+        env:
+          CI: true
