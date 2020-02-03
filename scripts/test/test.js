@@ -350,13 +350,17 @@ class Tester {
         return num;
     }
 
-    async advanceBlocks(blocksToAdvance) {
+    async advanceBlocks(blocksToAdvance, nonce) {
         if (blocksToAdvance < 1) {
             throw new Error('must advance at least one block.');
         }
 
         let currentBlockNumberHex = await this.getLatestBlockNumber();
-        const accountNonce = await this.web3.eth.getTransactionCount(this.address);
+        
+
+        const accountNonce = typeof(nonce) === 'undefined'
+          ? await this.web3.eth.getTransactionCount(this.address)
+          : nonce;
 
         const extraBlocks = blocksToAdvance - 1;
         const extraBlocksHex = '0x' + (
@@ -409,17 +413,16 @@ class Tester {
         return Promise.resolve(this.web3.eth.getBlock('latest'))
     }
 
-    async advanceTimeAndBlocks(blocks) {
+    async advanceTimeAndBlocks(blocks, nonce) {
         if (blocks < 2) {
             return reject('must advance by at least two blocks.')
         }
-        let block = await this.web3.eth.getBlock(await this.getLatestBlockNumber())
+        //let block = await this.web3.eth.getBlock(await this.getLatestBlockNumber())
         await this.advanceTime(blocks * 15);
-        block = await this.web3.eth.getBlock(await this.getLatestBlockNumber())
+        //block = await this.web3.eth.getBlock(await this.getLatestBlockNumber())
         
         // next block must be extracted from this function ('getBlock' breaks)
-        block = await this.advanceBlocks(blocks - 1);
-        return block;
+        return await this.advanceBlocks(blocks - 1, nonce);
     }
 
     signHashedPrefixedHexString(hashedHexString, account) {

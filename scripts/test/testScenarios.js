@@ -4205,12 +4205,16 @@ async function runAllTests(web3, context, contractName, contract) {
                 validateCTokenInterestAccrualEvents(
                     events, 0, cTokenSymbols[contractName]
                 )
-            }
+            },
+            tester.account,
+            0,
+            undefined,
+            accountNonce
         )
 
         if (context !== 'coverage') {
             blocksToAdvance  = 50000000; // ~20 years
-            block = await tester.advanceTimeAndBlocks(blocksToAdvance);
+            block = await tester.advanceTimeAndBlocks(blocksToAdvance, accountNonce + 1);
         } else {
             blocksToAdvance  = 100; // a little bit
             await advanceByBlocks(blocksToAdvance, tester);
@@ -4247,12 +4251,12 @@ async function runAllTests(web3, context, contractName, contract) {
             tester.account,
             0,
             undefined,
-            accountNonce
+            accountNonce + 2
         );
 
         if (context !== 'coverage') {
             blocksToAdvance  = 50000000; // ~20 years
-            block = await tester.advanceTimeAndBlocks(blocksToAdvance);
+            block = await tester.advanceTimeAndBlocks(blocksToAdvance, accountNonce + 3);
         } else {
             blocksToAdvance  = 100; // a little bit
             await advanceByBlocks(blocksToAdvance, tester);
@@ -4286,7 +4290,7 @@ async function runAllTests(web3, context, contractName, contract) {
             tester.account,
             0,
             undefined,
-            accountNonce + 2
+            accountNonce + 4
         );
 
         await tester.revertToSnapShot(snapshotId);
