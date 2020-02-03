@@ -26,8 +26,13 @@ jobs:
     runs-on: ubuntu-latest
 
     name: Run Linters
-    needs: build
+
     steps:
+      - uses: actions/checkout@v2
+      - name: GitHub Action for Yarn
+        uses: Borales/actions-yarn@v2.1.0
+        with:
+          node-version: ${{ matrix.node-version }}
       - run: yarn lint
         env:
           CI: true
