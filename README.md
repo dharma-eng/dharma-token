@@ -1,3 +1,5 @@
+![Dharma Token CI](https://github.com/dharmaprotocol/dharma-token/workflows/Dharma%20Token%20CI/badge.svg?branch=master)
+
 # Dharma Token (dharma-token)
 
 > Implementation and testing for core Dharma Token (dToken) contracts.
