@@ -4,7 +4,7 @@ on: [push]
 
 jobs:
   build:
-
+    name: Build Artifacts
     runs-on: ubuntu-latest
 
     strategy:
@@ -21,3 +21,11 @@ jobs:
     - run: yarn build
       env:
         CI: true
+
+  lint:
+    name: Run Linters
+    needs: build
+    steps:
+      - run: yarn lint
+        env:
+          CI: true
