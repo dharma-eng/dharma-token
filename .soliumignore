@@ -8,3 +8,7 @@ contracts/test/Scenario5Helper.sol
 contracts/test/Scenario6Helper.sol
 contracts/test/Scenario7Helper.sol
 contracts/test/Scenario9Helper.sol
+contracts/test/DharmaUpgradeBeaconController.sol
+contracts/test/UpgradeBeacon.sol
+contracts/test/UpgradeBeaconProxy.sol
+
