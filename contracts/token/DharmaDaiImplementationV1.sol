@@ -1,7 +1,7 @@
 pragma solidity 0.5.11;
 
 import "@openzeppelin/contracts/math/SafeMath.sol";
-import "./DharmaToken.sol";
+import "./DharmaTokenV1.sol";
 import "../../interfaces/CTokenInterface.sol";
 import "../../interfaces/ERC20Interface.sol";
 import "../../interfaces/CDaiInterestRateModelInterface.sol";
@@ -9,14 +9,17 @@ import "../../interfaces/PotInterface.sol";
 
 
 /**
- * @title DharmaDaiImplementationV0
+ * @title DharmaDaiImplementationV1
  * @author 0age (dToken mechanics derived from Compound cTokens, ERC20 methods
  * derived from Open Zeppelin's ERC20 contract)
- * @notice Dharma Dai is an interest-bearing token, with cDai as the backing
- * token and Dai as the underlying token. The dDai exchange rate will initially
- * increase at 90% the rate of the cDai exchange rate.
+ * @notice This contract provides the V1 implementation of Dharma Dai (or dDai),
+ * an upgradeable, interest-bearing ERC20 token with cDai as the backing token
+ * and Dai as the underlying token. The V1 dDai exchange rate will grow at 90%
+ * the rate of the backing cDai exchange rate. Dharma Dai also supports
+ * meta-transactions originating from externally-owned accounts, as well as from
+ * contract accounts via ERC-1271.
  */
-contract DharmaDaiImplementationV0 is DharmaToken {
+contract DharmaDaiImplementationV1 is DharmaTokenV1 {
   string internal constant _NAME = "Dharma Dai";
   string internal constant _SYMBOL = "dDai";
   string internal constant _UNDERLYING_NAME = "Dai";
@@ -34,7 +37,6 @@ contract DharmaDaiImplementationV0 is DharmaToken {
     0x197E90f9FAD81970bA7976f33CbD77088E5D7cf7 // mainnet
   );
 
-  // Note: this is just an EOA for the initial prototype.
   address internal constant _VAULT = 0x7e4A8391C728fEd9069B2962699AB416628B19Fa;
 
   /**
@@ -90,37 +92,67 @@ contract DharmaDaiImplementationV0 is DharmaToken {
     );
   }
 
+  /**
+   * @notice Internal pure function to supply the name of the underlying token.
+   * @return The name of the underlying token.
+   */
   function _getUnderlyingName() internal pure returns (string memory underlyingName) {
     underlyingName = _UNDERLYING_NAME;
   }
 
+  /**
+   * @notice Internal pure function to supply the address of the underlying
+   * token.
+   * @return The address of the underlying token.
+   */
   function _getUnderlying() internal pure returns (address underlying) {
     underlying = address(_DAI);
   }
 
+  /**
+   * @notice Internal pure function to supply the symbol of the backing cToken.
+   * @return The symbol of the backing cToken.
+   */
   function _getCTokenSymbol() internal pure returns (string memory cTokenSymbol) {
     cTokenSymbol = _CTOKEN_SYMBOL;
   }
 
+  /**
+   * @notice Internal pure function to supply the address of the backing cToken.
+   * @return The address of the backing cToken.
+   */
   function _getCToken() internal pure returns (address cToken) {
     cToken = address(_CDAI);
   }
 
+  /**
+   * @notice Internal pure function to supply the name of the dToken.
+   * @return The name of the dToken.
+   */
   function _getDTokenName() internal pure returns (string memory dTokenName) {
     dTokenName = _NAME;
   }
 
+  /**
+   * @notice Internal pure function to supply the symbol of the dToken.
+   * @return The symbol of the dToken.
+   */
   function _getDTokenSymbol() internal pure returns (string memory dTokenSymbol) {
     dTokenSymbol = _SYMBOL;
   }
 
+  /**
+   * @notice Internal pure function to supply the address of the vault that
+   * receives surplus cTokens whenever the surplus is pulled.
+   * @return The address of the vault.
+   */
   function _getVault() internal pure returns (address vault) {
     vault = _VAULT;
   }
 
   /**
-   * @notice Internal pure function to emulate exponentiation performed by the
-   * Dai Savings Rate contract.
+   * @notice Internal pure function to directly emulate exponentiation performed
+   * by the Dai Savings Rate contract.
    * @param x uint256 The number that will be raised to the given power.
    * @param n uint256 The power to raise that number by.
    * @param base uint256 The scaling factor that will be applied to n and z.
@@ -129,7 +161,6 @@ contract DharmaDaiImplementationV0 is DharmaToken {
   function _rpow(
     uint256 x, uint256 n, uint256 base
   ) internal pure returns (uint256 z) {
-    // solhint-disable-next-line no-inline-assembly
     assembly {
       switch x case 0 {switch n case 0 {z := base} default {z := 0}}
       default {

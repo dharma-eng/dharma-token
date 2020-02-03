@@ -8,17 +8,20 @@ import "../../interfaces/ERC1271Interface.sol";
 
 
 /**
- * @title DharmaToken
+ * @title DharmaTokenV1
  * @author 0age (dToken mechanics derived from Compound cTokens, ERC20 mechanics
  * derived from Open Zeppelin's ERC20 contract)
- * @notice Initial prototype for a cToken wrapper token. This version is not
- * upgradeable, and serves as an initial test of the eventual dToken mechanics.
- * The dToken exchange rate will grow at 90% the rate of the cToken exchange
- * rate.
+ * @notice A Dharma Token (or dToken) is an upgradeable ERC20 token with support
+ * for meta-transactions that earns interest with respect to a given stablecoin,
+ * and is backed by that stablecoin's respective Compound cToken. The V1 dToken
+ * exchange rate will grow at 90% the rate of the backing cToken exchange rate.
+ * This abstract contract contains functionality shared by each dToken - those
+ * implementations will then inherit this contract and override any relevant,
+ * unimplemented internal functions with implementation-specific ones.
  */
-contract DharmaToken is ERC20Interface, DTokenInterface, DharmaTokenHelpers {
+contract DharmaTokenV1 is ERC20Interface, DTokenInterface, DharmaTokenHelpers {
   // Set the version of the Dharma Token as a constant.
-  uint256 private constant _DTOKEN_VERSION = 0;
+  uint256 private constant _DTOKEN_VERSION = 1;
 
   // Set block number and dToken + cToken exchange rate in slot zero on accrual.
   AccrualIndex private _accrualIndex;
@@ -533,7 +536,7 @@ contract DharmaToken is ERC20Interface, DTokenInterface, DharmaTokenHelpers {
    * 0x45 and hashed again in order to generate a final digest for the required
    * signature - in other words, the same procedure utilized by `eth_Sign`.
    * @param functionSelector bytes4 The function selector for the given
-   * meta-transaction. There is only one function selector available for v0:
+   * meta-transaction. There is only one function selector available for V1:
    * `0x2d657fa5` (the selector for `modifyAllowanceViaMetaTransaction`).
    * @param arguments bytes The abi-encoded function arguments (aside from the
    * `expiration`, `salt`, and `signatures` arguments) that should be supplied

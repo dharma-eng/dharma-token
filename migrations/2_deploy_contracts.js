@@ -1,5 +1,5 @@
-const DharmaDai = artifacts.require("token/DharmaDaiImplementationV0");
-const DharmaUSDC = artifacts.require("token/DharmaUSDCImplementationV0");
+const DharmaDai = artifacts.require("token/DharmaDaiImplementationV1");
+const DharmaUSDC = artifacts.require("token/DharmaUSDCImplementationV1");
 const DharmaDaiInitializer = artifacts.require("token/DharmaDaiInitializer");
 const DharmaUSDCInitializer = artifacts.require("token/DharmaUSDCInitializer");
 const HelperTester = artifacts.require("test/HelperTester");

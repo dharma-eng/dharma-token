@@ -1,21 +1,24 @@
 pragma solidity 0.5.11;
 
 import "@openzeppelin/contracts/math/SafeMath.sol";
-import "./DharmaToken.sol";
+import "./DharmaTokenV1.sol";
 import "../../interfaces/CTokenInterface.sol";
 import "../../interfaces/ERC20Interface.sol";
 import "../../interfaces/CUSDCInterestRateModelInterface.sol";
 
 
 /**
- * @title DharmaUSDCImplementationV0
+ * @title DharmaUSDCImplementationV1
  * @author 0age (dToken mechanics derived from Compound cTokens, ERC20 methods
  * derived from Open Zeppelin's ERC20 contract)
- * @notice Dharma USD Coin is an interest-bearing token, with cUSDC as the
- * backing token and USD Coin as the underlying token. The dUSDC exchange rate
- * will initially increase at 90% the rate of the cUSDC exchange rate.
+ * @notice This contract provides the V1 implementation of Dharma USD Coin (or
+ * dUSDC), an upgradeable, interest-bearing ERC20 token with cUSDC as the
+ * backing token and USD Coin as the underlying token. The V1 dUSDC exchange
+ * rate will grow at 90% the rate of the backing cUSDC exchange rate. Dharma
+ * USD Coin also supports meta-transactions originating from externally-owned
+ * accounts, as well as from contract accounts via ERC-1271.
  */
-contract DharmaUSDCImplementationV0 is DharmaToken {
+contract DharmaUSDCImplementationV1 is DharmaTokenV1 {
   string internal constant _NAME = "Dharma USD Coin";
   string internal constant _SYMBOL = "dUSDC";
   string internal constant _UNDERLYING_NAME = "USD Coin";
@@ -29,7 +32,6 @@ contract DharmaUSDCImplementationV0 is DharmaToken {
     0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48 // mainnet
   );
 
-  // Note: this is just an EOA for the initial prototype.
   address internal constant _VAULT = 0x7e4A8391C728fEd9069B2962699AB416628B19Fa;
 
   uint256 internal constant _SCALING_FACTOR_SQUARED = 1e36;
@@ -96,30 +98,60 @@ contract DharmaUSDCImplementationV0 is DharmaToken {
     ) / _SCALING_FACTOR_SQUARED;
   }
 
+  /**
+   * @notice Internal pure function to supply the name of the underlying token.
+   * @return The name of the underlying token.
+   */
   function _getUnderlyingName() internal pure returns (string memory underlyingName) {
     underlyingName = _UNDERLYING_NAME;
   }
 
+  /**
+   * @notice Internal pure function to supply the address of the underlying
+   * token.
+   * @return The address of the underlying token.
+   */
   function _getUnderlying() internal pure returns (address underlying) {
     underlying = address(_USDC);
   }
 
+  /**
+   * @notice Internal pure function to supply the symbol of the backing cToken.
+   * @return The symbol of the backing cToken.
+   */
   function _getCTokenSymbol() internal pure returns (string memory cTokenSymbol) {
     cTokenSymbol = _CTOKEN_SYMBOL;
   }
 
+  /**
+   * @notice Internal pure function to supply the address of the backing cToken.
+   * @return The address of the backing cToken.
+   */
   function _getCToken() internal pure returns (address cToken) {
     cToken = address(_CUSDC);
   }
 
+  /**
+   * @notice Internal pure function to supply the name of the dToken.
+   * @return The name of the dToken.
+   */
   function _getDTokenName() internal pure returns (string memory dTokenName) {
     dTokenName = _NAME;
   }
 
+  /**
+   * @notice Internal pure function to supply the symbol of the dToken.
+   * @return The symbol of the dToken.
+   */
   function _getDTokenSymbol() internal pure returns (string memory dTokenSymbol) {
     dTokenSymbol = _SYMBOL;
   }
 
+  /**
+   * @notice Internal pure function to supply the address of the vault that
+   * receives surplus cTokens whenever the surplus is pulled.
+   * @return The address of the vault.
+   */
   function _getVault() internal pure returns (address vault) {
     vault = _VAULT;
   }
