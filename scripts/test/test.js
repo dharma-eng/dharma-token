@@ -4,8 +4,8 @@ var util = require('ethereumjs-util')
 
 // artifacts: compiled contracts
 // abi + contract
-const DharmaDaiArtifact = require('../../build/contracts/DharmaDaiImplementationV0.json');
-const DharmaUSDCArtifact = require('../../build/contracts/DharmaUSDCImplementationV0.json');
+const DharmaDaiArtifact = require('../../build/contracts/DharmaDaiImplementationV1.json');
+const DharmaUSDCArtifact = require('../../build/contracts/DharmaUSDCImplementationV1.json');
 
 const DharmaDaiInitializerArtifact = require('../../build/contracts/DharmaDaiInitializer.json');
 const DharmaUSDCInitializerArtifact = require('../../build/contracts/DharmaUSDCInitializer.json');
@@ -31,6 +31,8 @@ const Scenario7HelperArtifact = require('../../build/contracts/Scenario7Helper.j
 const Scenario9HelperArtifact = require('../../build/contracts/Scenario9Helper.json');
 
 const Scenario11HelperArtifact = require('../../build/contracts/Scenario11Helper.json');
+
+const MockERC1271Artifact = require('../../build/contracts/MockERC1271.json');
 
 // used to wait for more confirmations
 function longer() {
@@ -161,6 +163,12 @@ class Tester {
         );
         this.Scenario11HelperDeployer = Scenario11HelperDeployer;
 
+        const MockERC1271Deployer = new this.web3.eth.Contract(
+            MockERC1271Artifact.abi
+        );
+        MockERC1271Deployer.options.data = MockERC1271Artifact.bytecode;
+        this.MockERC1271Deployer = MockERC1271Deployer;
+
         this.DAI = new this.web3.eth.Contract(
             IERC20Artifact.abi, constants.DAI_MAINNET_ADDRESS
         );
@@ -193,9 +201,13 @@ class Tester {
 
         this.originalAddress = addresses[0];
 
-        this.address = addresses[1];
+        this.address = await this.setupNewDefaultAddress(
+            `0xfeedfeedfeedfeedfeedfeedfeedfeedfeedfeedfeedfeedfeedfeedfeedfeed`
+        );
 
-        this.addressTwo = addresses[2];
+        this.addressTwo = await this.setupNewDefaultAddress(
+            `0xf00df00df00df00df00df00df00df00df00df00df00df00df00df00df00df00d`
+        );
 
         let latestBlock = await this.web3.eth.getBlock('latest');
 
@@ -344,6 +356,7 @@ class Tester {
         }
 
         let currentBlockNumberHex = await this.getLatestBlockNumber();
+        const accountNonce = await this.web3.eth.getTransactionCount(this.address);
 
         const extraBlocks = blocksToAdvance - 1;
         const extraBlocksHex = '0x' + (
@@ -383,7 +396,8 @@ class Tester {
             data: '0x',
             value: 0,
             gas: 21000,
-            gasPrice: 1
+            gasPrice: 1,
+            nonce: accountNonce
         });
 
         return await this.web3.eth.getBlock(dummyTxReceipt.blockHash);

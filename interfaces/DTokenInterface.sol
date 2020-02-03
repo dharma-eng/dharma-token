@@ -33,7 +33,21 @@ interface DTokenInterface {
   function transferUnderlying(address recipient, uint256 underlyingEquivalentAmount) external returns (bool success);
   function transferUnderlyingFrom(address sender, address recipient, uint256 underlyingEquivalentAmount) external returns (bool success);
 
+  // This function provides basic meta-tx support and does not trigger accrual.
+  function modifyAllowanceViaMetaTransaction(
+    address owner,
+    address spender,
+    uint256 value,
+    bool increase,
+    uint256 expiration,
+    bytes32 salt,
+    bytes calldata signatures
+  ) external returns (bool success);
+
   // View and pure functions do not trigger accrual on the dToken or the cToken.
+  function getMetaTransactionMessageHash(
+    bytes4 functionSelector, bytes calldata arguments, uint256 expiration, bytes32 salt
+  ) external view returns (bytes32 digest, bool valid);
   function totalSupplyUnderlying() external view returns (uint256);
   function balanceOfUnderlying(address account) external view returns (uint256 underlyingBalance);
   function exchangeRateCurrent() external view returns (uint256 dTokenExchangeRate);

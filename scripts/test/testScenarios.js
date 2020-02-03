@@ -238,7 +238,7 @@ async function runAllTests(web3, context, contractName, contract) {
             [],
             true,
             value => {
-                assert.strictEqual(value, '0')
+                assert.strictEqual(value, '1')
             }
         );
 
@@ -3108,6 +3108,418 @@ async function runAllTests(web3, context, contractName, contract) {
         await tester.revertToSnapShot(snapshotId);
     }
 
+    async function testModifyAllowanceViaMetaTransaction() {
+        const snapshot = await tester.takeSnapshot();
+        const { result: snapshotId } = snapshot;
+
+        let approveAmount;
+        let messageHash;
+        
+        await tester.runTest(
+            `Get total ${tokenSymbols[contractName]} balance`,
+            DToken,
+            'balanceOf',
+            'call',
+            [tester.address],
+            true,
+            value => {
+                approveAmount = value.toString()
+            },
+        );
+
+        await tester.runTest(
+            `Get message hash for meta-transaction approval`,
+            DToken,
+            'getMetaTransactionMessageHash',
+            'call',
+            [
+                '0x2d657fa5', // `modifyAllowanceViaMetaTransaction`
+                web3.eth.abi.encodeParameters(
+                    ['address', 'address', 'uint256', 'bool'],
+                    [tester.address, tester.addressTwo, approveAmount, true]
+                ),
+                0, // No expiration
+                constants.NULL_BYTES_32 // no salt
+            ],
+            true,
+            values => {
+                assert.ok(values.valid);
+                messageHash = values.messageHash;
+            },
+        );
+
+        const signature = tester.signHashedPrefixedHexString(
+            messageHash, tester.address
+        );
+
+        await tester.runTest(
+            `${contractName} can modify dToken allowance via meta-transaction`,
+            DToken,
+            'modifyAllowanceViaMetaTransaction',
+            'send',
+            [
+                tester.address,
+                tester.addressTwo,
+                approveAmount,
+                true,
+                0,
+                constants.NULL_BYTES_32,
+                signature
+            ],
+            true,
+            receipt => {
+                const events = tester.getEvents(receipt, contractNames);
+                assert.strictEqual(events.length, 1);
+
+                // Approval Event
+                const approvalEvent = events[0];
+                assert.strictEqual(
+                    approvalEvent.address,
+                    tokenSymbols[contractName].toUpperCase()
+                )
+                assert.strictEqual(approvalEvent.eventName, 'Approval');
+
+                const { returnValues: approvalReturnValues } = approvalEvent;
+
+                assert.strictEqual(approvalReturnValues.owner, tester.address);
+                assert.strictEqual(approvalReturnValues.spender, tester.addressTwo);
+                assert.strictEqual(approvalReturnValues.value, approveAmount);
+            }
+        );
+
+        await tester.runTest(
+            `Message hash for meta-transaction approval is no longer valid`,
+            DToken,
+            'getMetaTransactionMessageHash',
+            'call',
+            [
+                '0x2d657fa5', // `modifyAllowanceViaMetaTransaction`
+                web3.eth.abi.encodeParameters(
+                    ['address', 'address', 'uint256', 'bool'],
+                    [tester.address, tester.addressTwo, approveAmount, true]
+                ),
+                0, // No expiration
+                constants.NULL_BYTES_32 // no salt
+            ],
+            true,
+            values => {
+                assert.ok(!values.valid);
+                assert.strictEqual(values.messageHash, messageHash);
+            },
+        );
+
+        await tester.runTest(
+            `Check ${tokenSymbols[contractName]} allowance is set correctly after approve`,
+            DToken,
+            'allowance',
+            'call',
+            [tester.address, tester.addressTwo],
+            true,
+            value => {
+                assert.strictEqual(value, approveAmount);
+            },
+        );
+
+        await tester.runTest(
+            `${contractName} cannot reuse a meta-transaction`,
+            DToken,
+            'modifyAllowanceViaMetaTransaction',
+            'send',
+            [
+                tester.address,
+                tester.addressTwo,
+                approveAmount,
+                true,
+                0,
+                constants.NULL_BYTES_32,
+                signature
+            ],
+            false
+        );
+
+        await tester.runTest(
+            `${contractName} cannot use an expired meta-transaction`,
+            DToken,
+            'modifyAllowanceViaMetaTransaction',
+            'send',
+            [
+                tester.address,
+                tester.addressTwo,
+                approveAmount,
+                true,
+                1,
+                constants.NULL_BYTES_32,
+                signature
+            ],
+            false
+        );
+
+        const MockERC1271 = await tester.runTest(
+            `Mock ERC1271 contract deployment`,
+            tester.MockERC1271Deployer,
+            '',
+            'deploy'
+        );
+
+        await tester.runTest(
+            `Get message hash for meta-transaction approval of ERC1271 contract`,
+            DToken,
+            'getMetaTransactionMessageHash',
+            'call',
+            [
+                '0x2d657fa5', // `modifyAllowanceViaMetaTransaction`
+                web3.eth.abi.encodeParameters(
+                    ['address', 'address', 'uint256', 'bool'],
+                    [MockERC1271.options.address, tester.addressTwo, 1, true]
+                ),
+                0, // No expiration
+                constants.NULL_BYTES_32 // no salt
+            ],
+            true,
+            values => {
+                assert.ok(values.valid);
+                messageHash = values.messageHash;
+            },
+        );
+
+        await tester.runTest(
+            `Mock ERC1271 will initially signal any arguments as valid`,
+            MockERC1271,
+            'isValidSignature',
+            'call',
+            ['0x', '0x'],
+            true,
+            value => {
+                assert.strictEqual(value, '0x20c13b0b');
+            }
+        );
+
+        await tester.runTest(
+            `${contractName} can modify dToken allowance for ERC1271 via meta-transaction`,
+            DToken,
+            'modifyAllowanceViaMetaTransaction',
+            'send',
+            [
+                MockERC1271.options.address,
+                tester.addressTwo,
+                1,
+                true,
+                0,
+                constants.NULL_BYTES_32,
+                signature
+            ],
+            true,
+            receipt => {
+                const events = tester.getEvents(receipt, contractNames);
+                assert.strictEqual(events.length, 1);
+
+                // Approval Event
+                const approvalEvent = events[0];
+                assert.strictEqual(
+                    approvalEvent.address,
+                    tokenSymbols[contractName].toUpperCase()
+                )
+                assert.strictEqual(approvalEvent.eventName, 'Approval');
+
+                const { returnValues: approvalReturnValues } = approvalEvent;
+
+                assert.strictEqual(approvalReturnValues.owner, MockERC1271.options.address);
+                assert.strictEqual(approvalReturnValues.spender, tester.addressTwo);
+                assert.strictEqual(approvalReturnValues.value, '1');
+            }
+        );
+
+        await tester.runTest(
+            `Mock ERC1271 contract deactivation`,
+            MockERC1271,
+            'deactivate',
+            'send'
+        );
+
+        await tester.runTest(
+            `Mock ERC1271 will now signal any arguments as invalid`,
+            MockERC1271,
+            'isValidSignature',
+            'call',
+            ['0x', '0x'],
+            true,
+            value => {
+                assert.ok(value !== '0x20c13b0b');
+            }
+        );
+
+        await tester.runTest(
+            `Get message hash for meta-transaction approval of ERC1271 contract`,
+            DToken,
+            'getMetaTransactionMessageHash',
+            'call',
+            [
+                '0x2d657fa5', // `modifyAllowanceViaMetaTransaction`
+                web3.eth.abi.encodeParameters(
+                    ['address', 'address', 'uint256', 'bool'],
+                    [MockERC1271.options.address, tester.addressTwo, 2, true]
+                ),
+                0, // No expiration
+                constants.NULL_BYTES_32 // no salt
+            ],
+            true,
+            values => {
+                assert.ok(values.valid);
+                messageHash = values.messageHash;
+            },
+        );
+
+        await tester.runTest(
+            `${contractName} cannot modify dToken allowance for ERC1271 if not valid`,
+            DToken,
+            'modifyAllowanceViaMetaTransaction',
+            'send',
+            [
+                MockERC1271.options.address,
+                tester.addressTwo,
+                2,
+                true,
+                0,
+                constants.NULL_BYTES_32,
+                signature
+            ],
+            false
+        );
+
+        await tester.runTest(
+            `Mock ERC1271 contract deactivation`,
+            MockERC1271,
+            'superDeactivate',
+            'send'
+        );
+
+        await tester.runTest(
+            `Mock ERC1271 will now signal any arguments as throwing`,
+            MockERC1271,
+            'isValidSignature',
+            'call',
+            ['0x', '0x'],
+            false
+        );
+
+        await tester.runTest(
+            `Get message hash for meta-transaction approval of ERC1271 contract`,
+            DToken,
+            'getMetaTransactionMessageHash',
+            'call',
+            [
+                '0x2d657fa5', // `modifyAllowanceViaMetaTransaction`
+                web3.eth.abi.encodeParameters(
+                    ['address', 'address', 'uint256', 'bool'],
+                    [MockERC1271.options.address, tester.addressTwo, 3, true]
+                ),
+                0, // No expiration
+                constants.NULL_BYTES_32 // no salt
+            ],
+            true,
+            values => {
+                assert.ok(values.valid);
+                messageHash = values.messageHash;
+            },
+        );
+
+        await tester.runTest(
+            `${contractName} cannot modify dToken allowance for ERC1271 if not valid`,
+            DToken,
+            'modifyAllowanceViaMetaTransaction',
+            'send',
+            [
+                MockERC1271.options.address,
+                tester.addressTwo,
+                3,
+                true,
+                0,
+                constants.NULL_BYTES_32,
+                signature
+            ],
+            false
+        );
+
+        await tester.runTest(
+            `${contractName} cannot use a signature that is too short on meta-transaction`,
+            DToken,
+            'modifyAllowanceViaMetaTransaction',
+            'send',
+            [
+                tester.address,
+                tester.addressTwo,
+                1,
+                true,
+                0,
+                constants.NULL_BYTES_32,
+                signature.slice(0, 10)
+            ],
+            false
+        );
+
+        await tester.runTest(
+            `${contractName} cannot use a signature with too high an s value on a meta-transaction`,
+            DToken,
+            'modifyAllowanceViaMetaTransaction',
+            'send',
+            [
+                tester.address,
+                tester.addressTwo,
+                1,
+                true,
+                0,
+                constants.NULL_BYTES_32,
+                ('0x12345678901234567890123456789012345678901234567890123456' +
+                 '78901234ffffffffffffffffffffffffffffffffffffffffffffffffff' +
+                 'ffffffffffffff1b'
+                )
+            ],
+            false
+        );
+
+        await tester.runTest(
+            `${contractName} cannot use a signature with an unsupported v value on a meta-transaction`,
+            DToken,
+            'modifyAllowanceViaMetaTransaction',
+            'send',
+            [
+                tester.address,
+                tester.addressTwo,
+                1,
+                true,
+                0,
+                constants.NULL_BYTES_32,
+                ('0x12345678901234567890123456789012345678901234567890123456' +
+                 '7890123412345678901234567890123456789012345678901234567890' +
+                 '1234567890123401'
+                )
+            ],
+            false
+        );
+
+        await tester.runTest(
+            `${contractName} cannot use bad signature on a meta-transaction`,
+            DToken,
+            'modifyAllowanceViaMetaTransaction',
+            'send',
+            [
+                tester.address,
+                tester.addressTwo,
+                1,
+                true,
+                0,
+                constants.NULL_BYTES_32,
+                ('0x12345678901234567890123456789012345678901234567890123456' +
+                 '7890123412345678901234567890123456789012345678901234567890' +
+                 '123456789012341b'
+                )
+            ],
+            false
+        );
+
+        await tester.revertToSnapShot(snapshotId);
+    }
+
     async function testSpreadPerBlock() {
 	    await tester.runTest(
 	        `Accrue ${cTokenSymbols[contractName]} interest`,
@@ -4139,26 +4551,21 @@ async function runAllTests(web3, context, contractName, contract) {
     const initialSnapshot = await tester.takeSnapshot();
     const { result: initialSnapshotId } = initialSnapshot;
 
-    /*
     await testPureFunctions();
     await testAccrueInterest();
     await testSupplyRatePerBlock();
     await testExchangeRate();
     await testAccrueInterestFromAnyAccount();
     await testPullSurplusBeforeMints();
-    */
 
     await getUnderlyingTokens();
 
     // Start testing scenarios
     // Note: scenarios require getUnderlyingTokens()
-    /*
     await testScenario0();
     await testScenario2();
     await testScenario5();
-    */
     await testScenario6();
-    /*
     await testScenario7();
     await testScenario9();
     await testScenario11();
@@ -4176,6 +4583,7 @@ async function runAllTests(web3, context, contractName, contract) {
     await testTransferFrom();
     await testTransferFromFullAllowance();
     await testAllowance();
+    await testModifyAllowanceViaMetaTransaction();
     await testTransferUnderlying();
     await testTransferUnderlyingFrom();
     await testTransferUnderlyingFromFullAllowance();
@@ -4184,7 +4592,6 @@ async function runAllTests(web3, context, contractName, contract) {
     await testRequireNonNull();
     await testBlockAccrual();
     await testEdgeCases();
-    */
 
     await tester.revertToSnapShot(initialSnapshotId);
 
@@ -4282,7 +4689,11 @@ async function testAdvanceTimeAndBlockInDays(web3, tester, context) {
 
     const timeDifference = currentTime - timeBeforeSnapshot;
 
-    assert.strictEqual(timeDifference, (blocksToAdvance * 15) + (after - before));
+    assert.ok(
+        Math.abs(
+            timeDifference - ((blocksToAdvance * 15) + (after - before))
+        ) <= 1
+    );
 
     await tester.revertToSnapShot(snapshotId);
 }

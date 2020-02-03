@@ -14,8 +14,8 @@ async function runTests(contract, contractName) {
 }
 
 // "use mocha" ;)
-const DharmaDai = artifacts.require("./token/DharmaDaiImplementationV0.sol")
-const DharmaUSDC = artifacts.require("./token/DharmaUSDCImplementationV0.sol")
+const DharmaDai = artifacts.require("./token/DharmaDaiImplementationV1.sol")
+const DharmaUSDC = artifacts.require("./token/DharmaUSDCImplementationV1.sol")
 
 const DharmaDaiInitializer = artifacts.require("./token/DharmaDaiInitializer.sol")
 const DharmaUSDCInitializer = artifacts.require("./token/DharmaUSDCInitializer.sol")
