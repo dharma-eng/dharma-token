@@ -23,6 +23,8 @@ jobs:
         CI: true
 
   lint:
+    runs-on: ubuntu-latest
+
     name: Run Linters
     needs: build
     steps:
