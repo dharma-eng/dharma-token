@@ -44,7 +44,6 @@ jobs:
   test:
     name: Run Tests
     runs-on: ubuntu-latest
-#    needs: build
 
     strategy:
       matrix:
