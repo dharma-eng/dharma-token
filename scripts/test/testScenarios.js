@@ -4629,7 +4629,7 @@ async function runAllTests(web3, context, contractName, contract) {
 
     if (tester.failed > 0) {
         console.log('warning - some tests failed!')
-        //process.exit(1)
+        process.exit(1)
     }
 
     // exit.
