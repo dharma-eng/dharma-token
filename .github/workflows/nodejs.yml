@@ -1,6 +1,6 @@
 name: Dharma Token CI
 
-on: [pull_request]
+on: [push]
 
 jobs:
   build:
