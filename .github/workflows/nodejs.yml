@@ -55,7 +55,8 @@ jobs:
         uses: actions/setup-node@v1
         with:
           node-version: ${{ matrix.node-version }}
-      - run: yarn stop ; yarn forkStart
+      - run: yarn forkStart
       - run: yarn test
+      - run: yarn stop
         env:
           CI: true
