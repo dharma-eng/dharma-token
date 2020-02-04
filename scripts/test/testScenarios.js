@@ -4616,7 +4616,7 @@ async function runAllTests(web3, context, contractName, contract) {
     await testSpreadPerBlock();
     await testRequireNonNull();
     await testBlockAccrual();
-    await testEdgeCases();
+    // await testEdgeCases();
 
     await tester.revertToSnapShot(initialSnapshotId);
 
