@@ -43,7 +43,7 @@ jobs:
   test:
     name: Run Tests
     runs-on: ubuntu-latest
-    needs: build
+#    needs: build
 
     strategy:
       matrix:
@@ -55,6 +55,8 @@ jobs:
         uses: actions/setup-node@v1
         with:
           node-version: ${{ matrix.node-version }}
+      - run: yarn install
+      - run: yarn build
       - run: yarn forkStart
       - run: yarn test
       - run: yarn stop
