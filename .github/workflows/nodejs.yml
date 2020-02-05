@@ -70,7 +70,7 @@ jobs:
 
     steps:
       - name: Run Coverage
-      - run: yarn coverage
+        run: yarn coverage
 
       - name: Coveralls
         uses: coverallsapp/github-action@master
