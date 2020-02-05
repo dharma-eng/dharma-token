@@ -5,7 +5,7 @@
 [![Dharma Dai Version](https://img.shields.io/badge/Dharma%20Dai%20Version-1-orange)](https://etherscan.io/address/0x00000000001876eB1444c986fD502e618c587430#readProxyContract)
 [![Dharma USD Coin Version](https://img.shields.io/badge/Dharma%20USD%20Coin%20Version-1-blue)](https://etherscan.io/address/0x00000000008943c65cAf789FFFCF953bE156f6f8#readProxyContract)
 [![License](https://img.shields.io/github/license/dharma-eng/dharma-token.svg)](https://github.com/dharma-eng/dharma-token/blob/master/LICENSE.md)
-![Dharma Token CI](https://github.com/dharma-eng/dharma-token/workflows/Dharma%20Token%20CI/badge.svg?branch=master)
+[![Dharma Token CI](https://github.com/dharma-eng/dharma-token/workflows/Dharma%20Token%20CI/badge.svg?branch=master)](https://github.com/dharma-eng/dharma-token/actions?query=workflow%3A%22Dharma+Token+CI%22)
 [![Coverage](https://img.shields.io/coveralls/github/dharma-eng/dharma-token)](https://coveralls.io/github/dharma-eng/dharma-token)
 [![Community](https://img.shields.io/badge/community-Discord-blueviolet)](https://discordapp.com/invite/qvKTDgR)
 
