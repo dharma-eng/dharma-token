@@ -4152,6 +4152,28 @@ async function runAllTests(web3, context, contractName, contract) {
         );
 
         if (contractName === "Dharma Dai") {
+            // await tester.runTest(
+            //     `${contractName} call to transferUnderlying with tiny amount rounds up to 1 dToken`,
+            //     DToken,
+            //     "transferUnderlying",
+            //     "send",
+            //     [tester.address, "1"],
+            //     true,
+            //     receipt => {
+            //         const events = tester.getEvents(receipt, contractNames);
+            //         assert.strictEqual(events.length, 1);
+            //         assert.strictEqual(
+            //             events[0].returnValues.from,
+            //             tester.address
+            //         );
+            //         assert.strictEqual(
+            //             events[0].returnValues.to,
+            //             tester.address
+            //         );
+            //         assert.strictEqual(events[0].returnValues.value, "1");
+            //     }
+            // );
+
             await tester.runTest(
                 `${contractName} cannot call mint and supply a tiny amount`,
                 DToken,
@@ -4186,28 +4208,6 @@ async function runAllTests(web3, context, contractName, contract) {
                 "send",
                 ["1"],
                 false
-            );
-
-            await tester.runTest(
-                `${contractName} call to transferUnderlying with tiny amount rounds up to 1 dToken`,
-                DToken,
-                "transfer",
-                "send",
-                [tester.address, "1"],
-                true,
-                receipt => {
-                    const events = tester.getEvents(receipt, contractNames);
-                    assert.strictEqual(events.length, 1);
-                    assert.strictEqual(
-                        events[0].returnValues.from,
-                        tester.address
-                    );
-                    assert.strictEqual(
-                        events[0].returnValues.to,
-                        tester.address
-                    );
-                    assert.strictEqual(events[0].returnValues.value, "1");
-                }
             );
         } else {
             await tester.runTest(
