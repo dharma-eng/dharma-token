@@ -59,3 +59,39 @@ jobs:
       - run: yarn ci
         env:
           CI: true
+   
+  coveralls:
+    name: Run Coveralls
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        node-version: [12.x]
+
+    steps:
+      - uses: actions/checkout@v2
+      - name: Coveralls 
+          uses: coverallsapp/github-action@v1.0.1
+
+      - name: Use Node.js
+        uses: actions/setup-node@v1
+        with:
+          node-version: ${{ matrix.node-version }}
+      - run: yarn install
+      - run: yarn ci
+        env:
+          CI: true
+
+      - uses: actions/checkout@v2
+      - name: Coveralls Run Coverage Test
+        run: yarn coverage
+          with:
+            github-token: ${{ secrets.GITHUB_TOKEN }}
+            parallel: true
+            path-to-lcov: ./coverage/lcov.info # optional (default value)
+
+      - name: Coveralls Finished
+        uses: coverallsapp/github-action@master
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          parallel-finished: true
