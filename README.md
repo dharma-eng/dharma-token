@@ -2,9 +2,9 @@
 
 > Implementation and testing for core Dharma Token (dToken) contracts, including Dharma Dai and Dharma USD Coin.
 
-[![License](https://img.shields.io/github/license/dharmaprotocol/dharma-token.svg)](https://github.com/dharmaprotocol/dharma-token/blob/master/LICENSE.md)
-![Dharma Token CI](https://github.com/dharmaprotocol/dharma-token/workflows/Dharma%20Token%20CI/badge.svg?branch=master)
-[![Coverage](https://img.shields.io/coveralls/github/dharmaprotocol/dharma-token)](https://coveralls.io/github/dharmaprotocol/dharma-token)
+[![License](https://img.shields.io/github/license/dharma-eng/dharma-token.svg)](https://github.com/dharma-eng/dharma-token/blob/master/LICENSE.md)
+![Dharma Token CI](https://github.com/dharma-eng/dharma-token/workflows/Dharma%20Token%20CI/badge.svg?branch=master)
+[![Coverage](https://img.shields.io/coveralls/github/dharma-eng/dharma-token)](https://coveralls.io/github/dharma-eng/dharma-token)
 [![Community](https://img.shields.io/badge/community-Discord-blueviolet)](https://discordapp.com/invite/qvKTDgR)
 
 ## Summary
@@ -165,7 +165,7 @@ Dharma Tokens have a whole host of view functions and pure functions - many are 
 To install locally, you'll need Node.js 10 through 12 and Yarn _(or npm)_. To get everything set up:
 
 ```sh
-$ git clone https://github.com/dharmaprotocol/dharma-token.git
+$ git clone https://github.com/dharma-eng/dharma-token.git
 $ cd dharma-token
 $ yarn install
 $ yarn build

@@ -4,6 +4,10 @@
   "description": "Implementation and testing for core Dharma Token (dToken) contracts, including Dharma Dai and Dharma USD Coin.",
   "author": "Dharma Labs",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/dharma-eng/dharma-token.git"
+  },
   "dependencies": {
     "@openzeppelin/contracts": "2.3.0",
     "ethereumjs-util": "6.1.0",
