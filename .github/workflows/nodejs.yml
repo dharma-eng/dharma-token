@@ -74,7 +74,7 @@ jobs:
       - name: Run Coverage
         run: yarn install && yarn coverage
         env:
-          - CI: true
+          CI: true
 
       - name: Coveralls
         uses: coverallsapp/github-action@master
