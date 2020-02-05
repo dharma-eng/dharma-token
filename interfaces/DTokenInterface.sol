@@ -22,7 +22,7 @@ interface DTokenInterface {
   // These external functions trigger accrual on the dToken and backing cToken.
   function mint(uint256 underlyingToSupply) external returns (uint256 dTokensMinted);
   function redeem(uint256 dTokensToBurn) external returns (uint256 underlyingReceived);
-  function redeemUnderlying(uint256 underelyingToReceive) external returns (uint256 dTokensBurned);
+  function redeemUnderlying(uint256 underlyingToReceive) external returns (uint256 dTokensBurned);
   function pullSurplus() external returns (uint256 cTokenSurplus);
 
   // These external functions only trigger accrual on the dToken.
