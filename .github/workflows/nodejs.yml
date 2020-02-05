@@ -69,6 +69,8 @@ jobs:
         node-version: [12.x]
 
     steps:
+      - uses: actions/checkout@v2
+
       - name: Run Coverage
         run: yarn install && yarn coverage
 
