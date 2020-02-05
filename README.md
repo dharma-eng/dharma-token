@@ -15,7 +15,7 @@ Interest on dTokens can be accrued at any point, but is automatically accrued wh
 
 Two Dharma Tokens are currently deployed to mainnet: [Dharma Dai](https://etherscan.io/token/0x00000000001876eb1444c986fd502e618c587430) (dDai) and [Dharma USD Coin](https://etherscan.io/token/0x00000000008943c65caf789fffcf953be156f6f8) (dUSDC).
 
-These contracts have been informally audited by Trail of Bits, but no formal audit report is currently available.
+These contracts were reviewed by Trail of Bits for four days in January 2020, including a general security review, a deeper review of internal math and accounting, and a review of meta-transaction functionality. Their findings and recommendations were immediately incorporated into the code, and Manticore test cases were developed and are included in this repository. No audit report is currently available.
 
 ## Table of Contents
 
