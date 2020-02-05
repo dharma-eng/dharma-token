@@ -56,9 +56,6 @@ jobs:
         with:
           node-version: ${{ matrix.node-version }}
       - run: yarn install
-      - run: yarn build
-      - run: yarn forkStart
-      - run: yarn test
-      - run: yarn stop
+      - run: yarn ci
         env:
           CI: true
