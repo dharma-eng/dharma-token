@@ -1,5 +1,7 @@
 # Dharma Token (dharma-token)
 
+![HeaderImg](https://i.ibb.co/bHQ9VCX/d-Tokens-Git-Hub.png)
+
 > Implementation and testing for core Dharma Token (dToken) contracts, including Dharma Dai and Dharma USD Coin.
 
 [![Dharma Dai Version](https://img.shields.io/badge/Dharma%20Dai%20Version-1-orange)](https://etherscan.io/address/0x00000000001876eB1444c986fD502e618c587430#readProxyContract)
