@@ -71,14 +71,16 @@ jobs:
     steps:
       - uses: actions/checkout@v2
       - name: Coveralls Run Coverage Test
-          with:
-            github-token: ${{ secrets.GITHUB_TOKEN }}
-            parallel: true
-            path-to-lcov: ./coverage/lcov.info
+        with:
+          node-version: ${{ matrix.node-version }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          parallel: true
+          path-to-lcov: ./coverage/lcov.info
       - run: yarn coverage
 
       - name: Coveralls Finished
         uses: coverallsapp/github-action@master
         with:
+          node-version: ${{ matrix.node-version }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
           parallel-finished: true
