@@ -110,6 +110,8 @@ interface DTokenInterface {
   function transfer(address recipient, uint256 amount) external returns (bool);
   function approve(address spender, uint256 amount) external returns (bool);
   function transferFrom(address sender, address recipient, uint256 amount) external returns (bool);
+  function increaseAllowance(address spender, uint256 addedValue) external returns (bool success);
+  function decreaseAllowance(address spender, uint256 subtractedValue) external returns (bool success);
 
   function totalSupply() external view returns (uint256);
   function balanceOf(address account) external view returns (uint256);
