@@ -3593,6 +3593,54 @@ async function runAllTests(web3, context, contractName, contract) {
         );
 
         await tester.runTest(
+            `Get message hash for meta-transaction approval from null address`,
+            DToken,
+            "getMetaTransactionMessageHash",
+            "call",
+            [
+                "0x2d657fa5", // `modifyAllowanceViaMetaTransaction`
+                web3.eth.abi.encodeParameters(
+                    ["address", "address", "uint256", "bool"],
+                    [
+                        constants.NULL_ADDRESS,
+                        tester.addressTwo,
+                        approveAmount,
+                        true
+                    ]
+                ),
+                0, // No expiration
+                constants.NULL_BYTES_32 // no salt
+            ],
+            true,
+            values => {
+                assert.ok(values.valid);
+                messageHash = values.messageHash;
+            }
+        );
+
+        let signature = tester.signHashedPrefixedHexString(
+            messageHash,
+            tester.address
+        );
+
+        await tester.runTest(
+            `${contractName} cannot specify null address as owner for meta-transaction`,
+            DToken,
+            "modifyAllowanceViaMetaTransaction",
+            "send",
+            [
+                constants.NULL_ADDRESS,
+                tester.addressTwo,
+                approveAmount,
+                true,
+                0,
+                constants.NULL_BYTES_32,
+                signature
+            ],
+            false
+        );
+
+        await tester.runTest(
             `Get message hash for meta-transaction approval`,
             DToken,
             "getMetaTransactionMessageHash",
@@ -3613,7 +3661,7 @@ async function runAllTests(web3, context, contractName, contract) {
             }
         );
 
-        const signature = tester.signHashedPrefixedHexString(
+        signature = tester.signHashedPrefixedHexString(
             messageHash,
             tester.address
         );
@@ -4130,6 +4178,23 @@ async function runAllTests(web3, context, contractName, contract) {
             [constants.NULL_ADDRESS, "0"],
             false
         );
+
+        await tester.runTest(
+            `${contractName} approve for small amount succeeds`,
+            DToken,
+            "approve",
+            "send",
+            [tester.address, "1"]
+        );
+
+        await tester.runTest(
+            `${contractName} transferFrom fails when amount exceeds allowance`,
+            DToken,
+            "transferFrom",
+            "send",
+            [tester.address, tester.address, "2"],
+            false
+        );
     }
 
     async function testEdgeCases() {
@@ -4152,29 +4217,27 @@ async function runAllTests(web3, context, contractName, contract) {
         );
 
         if (contractName === "Dharma Dai") {
-            if (context === "coverage") {
-                await tester.runTest(
-                    `${contractName} call to transferUnderlying with tiny amount rounds up to 1 dToken`,
-                    DToken,
-                    "transferUnderlying",
-                    "send",
-                    [tester.address, "1"],
-                    true,
-                    receipt => {
-                        const events = tester.getEvents(receipt, contractNames);
-                        assert.strictEqual(events.length, 1);
-                        assert.strictEqual(
-                            events[0].returnValues.from,
-                            tester.address
-                        );
-                        assert.strictEqual(
-                            events[0].returnValues.to,
-                            tester.address
-                        );
-                        assert.strictEqual(events[0].returnValues.value, "1");
-                    }
-                );
-            }
+            await tester.runTest(
+                `${contractName} call to transferUnderlying with tiny amount rounds up to at least 1 dToken`,
+                DToken,
+                "transferUnderlying",
+                "send",
+                [tester.address, "1"],
+                true,
+                receipt => {
+                    const events = tester.getEvents(receipt, contractNames);
+                    assert.strictEqual(events.length, 2);
+                    assert.strictEqual(
+                        events[1].returnValues.from,
+                        tester.address
+                    );
+                    assert.strictEqual(
+                        events[1].returnValues.to,
+                        tester.address
+                    );
+                    assert.strictEqual(events[1].returnValues.value, "1");
+                }
+            );
 
             await tester.runTest(
                 `${contractName} cannot call mint and supply a tiny amount`,
@@ -4773,7 +4836,7 @@ async function runAllTests(web3, context, contractName, contract) {
             tester.account,
             0,
             undefined,
-            accountNonce + 2
+            accountNonce ? accountNonce + 2 : undefined
         );
 
         if (context !== "coverage") {
@@ -4816,7 +4879,7 @@ async function runAllTests(web3, context, contractName, contract) {
             tester.account,
             0,
             undefined,
-            accountNonce + 4
+            accountNonce ? accountNonce + 4 : undefined
         );
 
         await tester.revertToSnapShot(snapshotId);
@@ -5128,7 +5191,7 @@ async function runAllTests(web3, context, contractName, contract) {
     await testScenario0();
     await testScenario2();
     await testScenario5();
-    // await testScenario6();
+    await testScenario6();
     await testScenario7();
     await testScenario9();
     await testScenario11();
@@ -5161,10 +5224,9 @@ async function runAllTests(web3, context, contractName, contract) {
     console.log(
         `completed ${tester.passed + tester.failed} test${
             tester.passed + tester.failed === 1 ? "" : "s"
-        } ` +
-            `on the ${tokenSymbols[contractName]} contract with ${
-                tester.failed
-            } failure${tester.failed === 1 ? "" : "s"}.`
+        } on the ${tokenSymbols[contractName]} contract with ${
+            tester.failed
+        } failure${tester.failed === 1 ? "" : "s"}.`
     );
 
     await longer();
