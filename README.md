@@ -173,7 +173,7 @@ Dharma Tokens have a whole host of view functions and pure functions - many are 
 
 ## Install
 
-To install locally, you'll need [Node.js](https://nodejs.org/) 10 through 12 and [Yarn](https://yarnpkg.com/) _(or [npm](https://www.npmjs.com/)_. To get everything set up:
+To install locally, you'll need [Node.js](https://nodejs.org/) 10 through 12 and [Yarn](https://yarnpkg.com/) _(or [npm](https://www.npmjs.com/))_. To get everything set up:
 
 ```sh
 $ git clone https://github.com/dharma-eng/dharma-token.git
