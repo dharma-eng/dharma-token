@@ -220,6 +220,8 @@ $ yarn manticoreTest
 - [Dharma USD Coin upgraded to DharmaUSDCImplementationV1](https://etherscan.io/tx/0xb8ad3fbf423e3b213c2bf6fd0952063a0bb5b8dcccba7ce18d1748dac5ee835c#eventlog)
 - [First Dharma Dai minted](https://etherscan.io/tx/0x449a91152f4aee8886b0b0395188244e6f7cdf84e35256d537ab0095621f56f8)
 - [First Dharma USD Coin minted](https://etherscan.io/tx/0xaeb18f014a93be51ce23a1d9a6677943423a842fa6c5685b298bd0d384da48d0)
+- [Ownership of Dharma Dai Upgrade Beacon Controller transferred to Dharma Upgrade Beacon Controller Manager](https://etherscan.io/tx/0xeb34353a02055a9f5c125e0af10c881a5f15d2ec406a278e387f00db411e4164#eventlog)
+- [Ownership of Dharma USD Coin Upgrade Beacon Controller transferred to Dharma Upgrade Beacon Controller Manager](https://etherscan.io/tx/0xfa165c93015b3e40f4b37703cd528266b5b64b61c71f32194d156cf5b010e367#eventlog)
 
 ## Additional Information
 
