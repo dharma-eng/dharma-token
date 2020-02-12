@@ -39,6 +39,7 @@ These contracts were reviewed by [Trail of Bits](https://www.trailofbits.com/) f
 - [Dharma Dai Upgrade Beacon Controller](https://etherscan.io/address/0x00000000001E980d286bE7f5f978f4Cc33128202#code)
 - [Dharma Dai Initializer Implementation](https://etherscan.io/address/0x772954310D202A92519F14db92623D5eDe78164c#code)
 - [Dharma Dai Implementation V1](https://etherscan.io/address/0x00000000580090B7b5B593AB408000b1AbB5f78d#code)
+- [Dharma Dai Implementation V0](https://etherscan.io/address/0x09A8f8cBa6FfCeBC57e4A0aB9110F6BB774B4c97#code) (emergency fallback implementation that pauses minting and pulling surplus)
 
 ### Dharma USD Coin
 
@@ -47,6 +48,7 @@ These contracts were reviewed by [Trail of Bits](https://www.trailofbits.com/) f
 - [Dharma USD Coin Upgrade Beacon Controller](https://etherscan.io/address/0x0000000000796dC3aA12EB9FE3B6e8F4D92cc966#code)
 - [Dharma USD Coin Initializer Implementation](https://etherscan.io/address/0xa3262589b86cA2C847132fbD470EeB9387899D2b#code)
 - [Dharma USD Coin Implementation V1](https://etherscan.io/address/0x00000000de26576A3700bb87d61BFbEE335C8b56#code)
+- [Dharma USD Coin Implementation V0](https://etherscan.io/address/0x87aa50A33899fB292F910c9464F66a68AAAB729a#code) (emergency fallback implementation that pauses minting and pulling surplus)
 
 ## Overview
 
