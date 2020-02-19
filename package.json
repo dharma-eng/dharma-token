@@ -1,6 +1,6 @@
 {
     "name": "dharma-token",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "description": "Implementation and testing for core Dharma Token (dToken) contracts, including Dharma Dai and Dharma USD Coin.",
     "author": "Dharma Labs",
     "license": "MIT",
