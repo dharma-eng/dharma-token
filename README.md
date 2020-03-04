@@ -47,7 +47,7 @@ These contracts were reviewed by [Trail of Bits](https://www.trailofbits.com/) f
 - [Dharma USD Coin Upgrade Beacon](https://etherscan.io/address/0x00000000000274bE4365Aa18CfDC9A22A947f67D)
 - [Dharma USD Coin Upgrade Beacon Controller](https://etherscan.io/address/0x0000000000796dC3aA12EB9FE3B6e8F4D92cc966#code)
 - [Dharma USD Coin Initializer Implementation](https://etherscan.io/address/0xa3262589b86cA2C847132fbD470EeB9387899D2b#code)
-- [Dharma USD Coin Implementation V1](https://etherscan.io/address/0x00000000de26576A3700bb87d61BFbEE335C8b56#code)
+- [Dharma USD Coin Implementation V1](https://etherscan.io/address/0x00000000e4474ae200cb092b5f002b598e65387e#code)
 - [Dharma USD Coin Implementation V0](https://etherscan.io/address/0x87aa50A33899fB292F910c9464F66a68AAAB729a#code) (emergency fallback implementation that pauses minting and pulling surplus)
 
 ## Overview
@@ -222,6 +222,7 @@ $ yarn manticoreTest
 - [First Dharma USD Coin minted](https://etherscan.io/tx/0xaeb18f014a93be51ce23a1d9a6677943423a842fa6c5685b298bd0d384da48d0)
 - [Ownership of Dharma Dai Upgrade Beacon Controller transferred to Dharma Upgrade Beacon Controller Manager](https://etherscan.io/tx/0xeb34353a02055a9f5c125e0af10c881a5f15d2ec406a278e387f00db411e4164#eventlog)
 - [Ownership of Dharma USD Coin Upgrade Beacon Controller transferred to Dharma Upgrade Beacon Controller Manager](https://etherscan.io/tx/0xfa165c93015b3e40f4b37703cd528266b5b64b61c71f32194d156cf5b010e367#eventlog)
+- [Dharma USD Coin upgraded to "hotfix" DharmaUSDCImplementationV1](https://etherscan.io/tx/0x8b65791a0ae15ea2ba5568c76878e7e1f0e2a828dbdddf0f58e7826f5e2e5f41#eventlog)
 
 ## Additional Information
 
