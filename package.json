@@ -9,7 +9,7 @@
         "url": "https://github.com/dharma-eng/dharma-token.git"
     },
     "dependencies": {
-        "@openzeppelin/contracts": "2.3.0",
+        "@openzeppelin/contracts": "4.4.2",
         "ethereumjs-util": "6.1.0",
         "ethlint": "1.2.5",
         "ganache-cli": "git://github.com/dharma-eng/ganache-cli",
